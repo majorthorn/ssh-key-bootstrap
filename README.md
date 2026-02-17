@@ -2,7 +2,6 @@
 
 Add a public SSH key to one or more remote Linux/Unix hosts over SSH.
 
-
 ## AI Disclaimer
 
 - This README and the current codebase were created with assistance from Codex (ChatGPT). AI may introduce subtle bugs or omissions.
