@@ -1,4 +1,4 @@
-module warp-ssh-key
+module vibe-ssh-lift
 
 go 1.25.0
 

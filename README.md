@@ -1,4 +1,4 @@
-# warp-ssh-key
+# vibe-ssh-lift
 
 Add a public SSH key to one or more remote Linux/Unix hosts over SSH.
 
@@ -12,13 +12,13 @@ Add a public SSH key to one or more remote Linux/Unix hosts over SSH.
 ## Build
 
 ```bash
-go build -o warp-ssh-key .
+go build -o vibe-ssh-lift .
 ```
 
 ## Usage
 
 ```bash
-./warp-ssh-key [flags]
+./vibe-ssh-lift [flags]
 ```
 
 If required values are missing, the tool prompts interactively.
@@ -43,7 +43,7 @@ If required values are missing, the tool prompts interactively.
 ### Single Host, Key File
 
 ```bash
-./warp-ssh-key \
+./vibe-ssh-lift \
   -server 192.168.1.10 \
   -user deploy \
   -password-env SSH_PASSWORD \
@@ -53,7 +53,7 @@ If required values are missing, the tool prompts interactively.
 ### Multiple Hosts From File
 
 ```bash
-./warp-ssh-key \
+./vibe-ssh-lift \
   -servers-file ./servers.txt \
   -user deploy \
   -pubkey-file ~/.ssh/id_ed25519.pub
@@ -71,7 +71,7 @@ app02.internal:2222
 ### Inline Public Key
 
 ```bash
-./warp-ssh-key \
+./vibe-ssh-lift \
   -servers "host1,host2:2222" \
   -user deploy \
   -password-env SSH_PASSWORD \
@@ -81,7 +81,7 @@ app02.internal:2222
 ### Custom known_hosts Path
 
 ```bash
-./warp-ssh-key \
+./vibe-ssh-lift \
   -server host1 \
   -user deploy \
   -password-env SSH_PASSWORD \
