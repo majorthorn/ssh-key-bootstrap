@@ -1,3 +1,10 @@
+## AI Disclaimer
+
+- This README and the current codebase were created with assistance from Codex (ChatGPT). AI may introduce subtle bugs or omissions.
+- The developer has reviewed the code to the best of their ability but is a novice with Go and still learning; please audit every change before use.
+- Please review the code, dependencies, and security posture before building or running the tool.
+- Test thoroughly in a safe environment and verify host key expectations before granting access.
+
 # vibe-ssh-lift
 
 Add a public SSH key to one or more remote Linux/Unix hosts over SSH.
