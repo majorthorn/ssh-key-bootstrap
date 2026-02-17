@@ -91,8 +91,8 @@ func run() error {
 	}
 
 	// Prompt only for fields still missing after flags/env processing.
-	in := bufio.NewReader(os.Stdin)
-	if err := fillMissingInputs(in, opts); err != nil {
+	inputReader := bufio.NewReader(os.Stdin)
+	if err := fillMissingInputs(inputReader, opts); err != nil {
 		return fail(2, "%w", err)
 	}
 
@@ -109,7 +109,7 @@ func run() error {
 	}
 
 	// Build SSH client config with secure host-key verification by default.
-	cfg, err := buildSSHConfig(opts)
+	clientConfig, err := buildSSHConfig(opts)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
@@ -117,7 +117,7 @@ func run() error {
 	// Attempt all hosts and keep going to show complete success/failure status.
 	failures := 0
 	for _, host := range hosts {
-		if err := addAuthorizedKey(host, key, cfg); err != nil {
+		if err := addAuthorizedKey(host, key, clientConfig); err != nil {
 			failures++
 			fmt.Printf("[FAIL] %s: %v\n", host, err)
 			continue
@@ -194,12 +194,12 @@ func validateOptions(opts *options) error {
 }
 
 // fillMissingInputs interactively collects required values not set via flags/env.
-func fillMissingInputs(in *bufio.Reader, opts *options) error {
+func fillMissingInputs(inputReader *bufio.Reader, opts *options) error {
 	var err error
 
 	// Request username when missing.
 	if strings.TrimSpace(opts.user) == "" {
-		opts.user, err = promptRequired(in, "SSH username: ")
+		opts.user, err = promptRequired(inputReader, "SSH username: ")
 		if err != nil {
 			return err
 		}
@@ -207,7 +207,7 @@ func fillMissingInputs(in *bufio.Reader, opts *options) error {
 
 	// Request password when still missing after optional env lookup.
 	if strings.TrimSpace(opts.password) == "" {
-		opts.password, err = promptPassword(in, "SSH password: ")
+		opts.password, err = promptPassword(inputReader, "SSH password: ")
 		if err != nil {
 			return err
 		}
@@ -217,7 +217,7 @@ func fillMissingInputs(in *bufio.Reader, opts *options) error {
 	if strings.TrimSpace(opts.server) == "" &&
 		strings.TrimSpace(opts.servers) == "" &&
 		strings.TrimSpace(opts.serversFile) == "" {
-		opts.servers, err = promptRequired(in, "Servers (comma-separated, host or host:port): ")
+		opts.servers, err = promptRequired(inputReader, "Servers (comma-separated, host or host:port): ")
 		if err != nil {
 			return err
 		}
@@ -225,14 +225,14 @@ func fillMissingInputs(in *bufio.Reader, opts *options) error {
 
 	// Require a key source; first ask for file, then fallback to inline key paste.
 	if strings.TrimSpace(opts.pubKey) == "" && strings.TrimSpace(opts.pubKeyFile) == "" {
-		opts.pubKeyFile, err = promptLine(in, "Public key file path (enter to paste key): ")
+		opts.pubKeyFile, err = promptLine(inputReader, "Public key file path (enter to paste key): ")
 		if err != nil {
 			return err
 		}
 		opts.pubKeyFile = strings.TrimSpace(opts.pubKeyFile)
 
 		if opts.pubKeyFile == "" {
-			opts.pubKey, err = promptRequired(in, "Public key text: ")
+			opts.pubKey, err = promptRequired(inputReader, "Public key text: ")
 			if err != nil {
 				return err
 			}
@@ -310,12 +310,12 @@ func expandHomePath(path string) (string, error) {
 }
 
 // promptLine reads a single line from stdin, trimming surrounding whitespace.
-func promptLine(in *bufio.Reader, label string) (string, error) {
+func promptLine(reader *bufio.Reader, label string) (string, error) {
 	// Show a prompt before reading.
 	fmt.Print(label)
 
 	// Read through newline; EOF is accepted for piped input.
-	line, err := in.ReadString('\n')
+	line, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
@@ -324,9 +324,9 @@ func promptLine(in *bufio.Reader, label string) (string, error) {
 }
 
 // promptRequired keeps prompting until a non-empty value is entered.
-func promptRequired(in *bufio.Reader, label string) (string, error) {
+func promptRequired(reader *bufio.Reader, label string) (string, error) {
 	for {
-		value, err := promptLine(in, label)
+		value, err := promptLine(reader, label)
 		if err != nil {
 			return "", err
 		}
@@ -338,7 +338,7 @@ func promptRequired(in *bufio.Reader, label string) (string, error) {
 }
 
 // promptPassword reads a required password with hidden input in terminals.
-func promptPassword(in *bufio.Reader, label string) (string, error) {
+func promptPassword(reader *bufio.Reader, label string) (string, error) {
 	for {
 		// Display prompt each attempt.
 		fmt.Print(label)
@@ -355,7 +355,7 @@ func promptPassword(in *bufio.Reader, label string) (string, error) {
 			pwd = strings.TrimSpace(string(bytes))
 		} else {
 			// Fallback for piped input and non-terminal sessions.
-			line, err := in.ReadString('\n')
+			line, err := reader.ReadString('\n')
 			if err != nil && !errors.Is(err, io.EOF) {
 				return "", err
 			}
@@ -373,10 +373,10 @@ func promptPassword(in *bufio.Reader, label string) (string, error) {
 // resolveHosts merges host inputs, normalizes addresses, deduplicates, and sorts.
 func resolveHosts(server, servers, serversFile string, defaultPort int) ([]string, error) {
 	// Use a set to deduplicate hosts across all input sources.
-	set := map[string]struct{}{}
+	hostSet := map[string]struct{}{}
 
-	// add validates and inserts one host string.
-	add := func(raw string) error {
+	// addHost validates and inserts one host string.
+	addHost := func(raw string) error {
 		raw = strings.TrimSpace(raw)
 		if raw == "" {
 			return nil
@@ -387,57 +387,57 @@ func resolveHosts(server, servers, serversFile string, defaultPort int) ([]strin
 			return fmt.Errorf("invalid server %q: %w", raw, err)
 		}
 
-		set[normalized] = struct{}{}
+		hostSet[normalized] = struct{}{}
 		return nil
 	}
 
 	// Add optional single host input.
-	if err := add(server); err != nil {
+	if err := addHost(server); err != nil {
 		return nil, err
 	}
 
 	// Add optional comma-separated hosts.
-	for _, s := range strings.Split(servers, ",") {
-		if err := add(s); err != nil {
+	for _, candidateEntry := range strings.Split(servers, ",") {
+		if err := addHost(candidateEntry); err != nil {
 			return nil, err
 		}
 	}
 
 	// Add optional file-based hosts (supports blank lines and comments).
 	if strings.TrimSpace(serversFile) != "" {
-		f, err := os.Open(serversFile)
+		serversFileHandle, err := os.Open(serversFile)
 		if err != nil {
 			return nil, fmt.Errorf("open servers file: %w", err)
 		}
-		defer f.Close()
+		defer serversFileHandle.Close()
 
-		scanner := bufio.NewScanner(f)
+		fileScanner := bufio.NewScanner(serversFileHandle)
 		lineNo := 0
-		for scanner.Scan() {
+		for fileScanner.Scan() {
 			lineNo++
-			line := strings.TrimSpace(scanner.Text())
+			line := strings.TrimSpace(fileScanner.Text())
 			if line == "" || strings.HasPrefix(line, "#") {
 				continue
 			}
 
-			if err := add(line); err != nil {
+			if err := addHost(line); err != nil {
 				return nil, fmt.Errorf("servers file line %d: %w", lineNo, err)
 			}
 		}
 
-		if err := scanner.Err(); err != nil {
+		if err := fileScanner.Err(); err != nil {
 			return nil, fmt.Errorf("read servers file: %w", err)
 		}
 	}
 
 	// Require at least one resolved host target.
-	if len(set) == 0 {
+	if len(hostSet) == 0 {
 		return nil, errors.New("no servers provided")
 	}
 
 	// Convert set to sorted slice for stable output order.
-	hosts := make([]string, 0, len(set))
-	for host := range set {
+	hosts := make([]string, 0, len(hostSet))
+	for host := range hostSet {
 		hosts = append(hosts, host)
 	}
 	sort.Strings(hosts)
