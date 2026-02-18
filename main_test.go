@@ -13,15 +13,15 @@ import (
 )
 
 // TestNormalizeHost verifies ports/default handling across host inputs.
-func TestNormalizeHost(t *testing.T) {
-	t.Parallel()
+func TestNormalizeHost(testContext *testing.T) {
+	testContext.Parallel()
 
-	cases := []struct {
-		name    string
-		raw     string
-		port    int
-		want    string
-		wantErr bool
+	testCases := []struct {
+		name             string
+		inputHost        string
+		defaultPort      int
+		expectedHostPort string
+		expectError      bool
 	}{
 		{"hostOnly", "example.com", 22, "example.com:22", false},
 		{"withPort", "host:2222", 22, "host:2222", false},
@@ -29,180 +29,179 @@ func TestNormalizeHost(t *testing.T) {
 		{"empty", "   ", 22, "", true},
 	}
 
-	for _, testCase := range cases {
+	for _, testCase := range testCases {
 		testCase := testCase
-		t.Run(testCase.name, func(t *testing.T) {
-			t.Parallel()
+		testContext.Run(testCase.name, func(subTestContext *testing.T) {
+			subTestContext.Parallel()
 
-			got, err := normalizeHost(testCase.raw, testCase.port)
-			if testCase.wantErr {
-				if err == nil {
-					t.Fatalf("expected error")
+			actualHostPort, normalizeErr := normalizeHost(testCase.inputHost, testCase.defaultPort)
+			if testCase.expectError {
+				if normalizeErr == nil {
+					subTestContext.Fatalf("expected error")
 				}
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			if normalizeErr != nil {
+				subTestContext.Fatalf("unexpected error: %v", normalizeErr)
 			}
 
-			if got != testCase.want {
-				t.Fatalf("got %q want %q", got, testCase.want)
+			if actualHostPort != testCase.expectedHostPort {
+				subTestContext.Fatalf("got %q want %q", actualHostPort, testCase.expectedHostPort)
 			}
 		})
 	}
 }
 
 // TestResolveHostsNoInput asserts error when no host sources are provided.
-func TestResolveHostsNoInput(t *testing.T) {
-	t.Parallel()
+func TestResolveHostsNoInput(testContext *testing.T) {
+	testContext.Parallel()
 
-	if _, err := resolveHosts("", "", "", 22); err == nil {
-		t.Fatalf("expected error without hosts")
+	if _, resolveErr := resolveHosts("", "", "", 22); resolveErr == nil {
+		testContext.Fatalf("expected error without hosts")
 	}
 }
 
 // TestExtractSingleKey validates that only one non-comment key line is kept.
-func TestExtractSingleKey(t *testing.T) {
-	t.Parallel()
+func TestExtractSingleKey(testContext *testing.T) {
+	testContext.Parallel()
 
-	cases := []struct {
-		name    string
-		raw     string
-		wantErr bool
+	testCases := []struct {
+		name                 string
+		inputKeyText         string
+		expectError          bool
+		expectedExtractedKey string
 	}{
-		{"single", "ssh-ed25519 AAAAB3NzaC1lZDI1NTE5AAAAIE", false},
-		{"multi", "ssh-ed25519 A\nssh-ed25519 B", true},
-		{"empty", "  \n# comment", true},
+		{"single", "ssh-ed25519 AAAAB3NzaC1lZDI1NTE5AAAAIE", false, "ssh-ed25519 AAAAB3NzaC1lZDI1NTE5AAAAIE"},
+		{"multi", "ssh-ed25519 A\nssh-ed25519 B", true, ""},
+		{"empty", "  \n# comment", true, ""},
 	}
 
-	for _, testCase := range cases {
+	for _, testCase := range testCases {
 		testCase := testCase
-		t.Run(testCase.name, func(t *testing.T) {
-			key, err := extractSingleKey(testCase.raw)
-			if testCase.wantErr {
-				if err == nil {
-					t.Fatalf("expected error")
+		testContext.Run(testCase.name, func(subTestContext *testing.T) {
+			extractedKey, extractErr := extractSingleKey(testCase.inputKeyText)
+			if testCase.expectError {
+				if extractErr == nil {
+					subTestContext.Fatalf("expected error")
 				}
 				return
 			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
+			if extractErr != nil {
+				subTestContext.Fatalf("unexpected error: %v", extractErr)
 			}
-			if key != "ssh-ed25519 AAAAB3NzaC1lZDI1NTE5AAAAIE" {
-				if testCase.name == "single" {
-					t.Fatalf("got %q", key)
-				}
+			if extractedKey != testCase.expectedExtractedKey {
+				subTestContext.Fatalf("got %q want %q", extractedKey, testCase.expectedExtractedKey)
 			}
 		})
 	}
 }
 
 // TestResolveHosts ensures combined sources deduplicate, normalize, and sort hosts.
-func TestResolveHosts(t *testing.T) {
-	t.Parallel()
+func TestResolveHosts(testContext *testing.T) {
+	testContext.Parallel()
 
-	dir := t.TempDir()
-	list := filepath.Join(dir, "servers.txt")
-	content := `
+	tempDirectory := testContext.TempDir()
+	serverListPath := filepath.Join(tempDirectory, "servers.txt")
+	serverListContent := `
 # comment line
 hostA
 hostB:2222
 hostA
 `
 
-	if err := os.WriteFile(list, []byte(content), 0o600); err != nil {
-		t.Fatalf("write list: %v", err)
+	if writeErr := os.WriteFile(serverListPath, []byte(serverListContent), 0o600); writeErr != nil {
+		testContext.Fatalf("write list: %v", writeErr)
 	}
 
-	got, err := resolveHosts("hostC", "hostA,hostB:2222", list, 22)
-	if err != nil {
-		t.Fatalf("resolve hosts: %v", err)
+	actualHosts, resolveErr := resolveHosts("hostC", "hostA,hostB:2222", serverListPath, 22)
+	if resolveErr != nil {
+		testContext.Fatalf("resolve hosts: %v", resolveErr)
 	}
 
-	want := []string{"hostA:22", "hostB:2222", "hostC:22"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %v want %v", got, want)
+	expectedHosts := []string{"hostA:22", "hostB:2222", "hostC:22"}
+	if !reflect.DeepEqual(actualHosts, expectedHosts) {
+		testContext.Fatalf("got %v want %v", actualHosts, expectedHosts)
 	}
 }
 
 // TestResolvePublicKeyInline ensures inline key text is parsed and validated.
-func TestResolvePublicKeyInline(t *testing.T) {
-	t.Parallel()
+func TestResolvePublicKeyInline(testContext *testing.T) {
+	testContext.Parallel()
 
-	pubKey := generateTestKey(t)
-	got, err := resolvePublicKey(pubKey, "")
-	if err != nil {
-		t.Fatalf("resolve inline key: %v", err)
+	inlinePublicKey := generateTestKey(testContext)
+	resolvedPublicKey, resolveErr := resolvePublicKey(inlinePublicKey, "")
+	if resolveErr != nil {
+		testContext.Fatalf("resolve inline key: %v", resolveErr)
 	}
-	if got == "" {
-		t.Fatalf("empty key")
+	if resolvedPublicKey == "" {
+		testContext.Fatalf("empty key")
 	}
 }
 
 // TestResolvePublicKeyFile ensures file-based keys are read and validated.
-func TestResolvePublicKeyFile(t *testing.T) {
-	t.Parallel()
+func TestResolvePublicKeyFile(testContext *testing.T) {
+	testContext.Parallel()
 
-	content := generateTestKey(t)
-	dir := t.TempDir()
-	path := filepath.Join(dir, "key.pub")
-	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-		t.Fatalf("write key: %v", err)
+	publicKeyFileContent := generateTestKey(testContext)
+	tempDirectory := testContext.TempDir()
+	publicKeyPath := filepath.Join(tempDirectory, "key.pub")
+	if writeErr := os.WriteFile(publicKeyPath, []byte(publicKeyFileContent), 0o600); writeErr != nil {
+		testContext.Fatalf("write key: %v", writeErr)
 	}
 
-	got, err := resolvePublicKey("", path)
-	if err != nil {
-		t.Fatalf("resolve file key: %v", err)
+	resolvedPublicKey, resolveErr := resolvePublicKey("", publicKeyPath)
+	if resolveErr != nil {
+		testContext.Fatalf("resolve file key: %v", resolveErr)
 	}
-	if got == "" {
-		t.Fatalf("empty key")
+	if resolvedPublicKey == "" {
+		testContext.Fatalf("empty key")
 	}
 }
 
 // TestResolvePublicKeyBothSources rejects simultaneous inline and file inputs.
-func TestResolvePublicKeyBothSources(t *testing.T) {
-	t.Parallel()
+func TestResolvePublicKeyBothSources(testContext *testing.T) {
+	testContext.Parallel()
 
-	if _, err := resolvePublicKey("key", "file"); err == nil {
-		t.Fatalf("expected error when both sources provided")
+	if _, resolveErr := resolvePublicKey("key", "file"); resolveErr == nil {
+		testContext.Fatalf("expected error when both sources provided")
 	}
 }
 
 // TestNormalizeLF ensures CRLF and CR are normalized before remote script execution.
-func TestNormalizeLF(t *testing.T) {
-	t.Parallel()
+func TestNormalizeLF(testContext *testing.T) {
+	testContext.Parallel()
 
-	raw := "line1\r\nline2\rline3\n"
-	got := normalizeLF(raw)
-	want := "line1\nline2\nline3\n"
-	if got != want {
-		t.Fatalf("got %q want %q", got, want)
+	rawValue := "line1\r\nline2\rline3\n"
+	normalizedValue := normalizeLF(rawValue)
+	expectedValue := "line1\nline2\nline3\n"
+	if normalizedValue != expectedValue {
+		testContext.Fatalf("got %q want %q", normalizedValue, expectedValue)
 	}
 }
 
 // TestAddAuthorizedKeyScriptLFOnly guards against carriage returns in remote shell commands.
-func TestAddAuthorizedKeyScriptLFOnly(t *testing.T) {
-	t.Parallel()
+func TestAddAuthorizedKeyScriptLFOnly(testContext *testing.T) {
+	testContext.Parallel()
 
 	if strings.Contains(normalizeLF(addAuthorizedKeyScript), "\r") {
-		t.Fatalf("remote script contains carriage return")
+		testContext.Fatalf("remote script contains carriage return")
 	}
 }
 
 // generateTestKey synthesizes a valid ed25519 public key for authorized_keys usage.
-func generateTestKey(t *testing.T) string {
-	t.Helper()
+func generateTestKey(testContext *testing.T) string {
+	testContext.Helper()
 
-	pub, _, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatalf("generate key: %v", err)
+	generatedPublicKey, _, generateErr := ed25519.GenerateKey(rand.Reader)
+	if generateErr != nil {
+		testContext.Fatalf("generate key: %v", generateErr)
 	}
 
-	pk, err := ssh.NewPublicKey(pub)
-	if err != nil {
-		t.Fatalf("wrap key: %v", err)
+	sshPublicKey, wrapErr := ssh.NewPublicKey(generatedPublicKey)
+	if wrapErr != nil {
+		testContext.Fatalf("wrap key: %v", wrapErr)
 	}
 
-	return string(ssh.MarshalAuthorizedKey(pk))
+	return string(ssh.MarshalAuthorizedKey(sshPublicKey))
 }
