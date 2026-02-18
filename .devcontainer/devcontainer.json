@@ -7,6 +7,7 @@
       "extensions": [
         "golang.go",
         "golangci-lint.vscode-golangci-lint",
+        "openai.chatgpt"
       ],
       "settings": {
         "go.formatTool": "gofmt",
