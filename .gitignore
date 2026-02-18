@@ -5,6 +5,9 @@
 *.pyc
 *.log
 *.env
+config.json
+!configexamples/.env.example
+!configexamples/config.example.json
 .secrets
 .key
 .pem

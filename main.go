@@ -3,6 +3,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -27,6 +28,10 @@ const (
 	defaultTimeoutSeconds = 10
 	// defaultKnownHostsPath is used for host key verification when secure mode is on.
 	defaultKnownHostsPath = "~/.ssh/known_hosts"
+	// defaultBinaryDotEnvFilename is checked next to the executable when no config flag is provided.
+	defaultBinaryDotEnvFilename = ".env"
+	// defaultBinaryJSONConfigFilename is checked next to the executable when no config flag is provided.
+	defaultBinaryJSONConfigFilename = "config.json"
 )
 
 // addAuthorizedKeyScript runs remotely and appends the key only if missing.
@@ -50,6 +55,8 @@ type options struct {
 	passwordEnv           string
 	pubKey                string
 	pubKeyFile            string
+	jsonFile              string
+	envFile               string
 	port                  int
 	timeoutSec            int
 	insecureIgnoreHostKey bool
@@ -84,6 +91,12 @@ func main() {
 func run() error {
 	// Parse all CLI flags into one options struct.
 	programOptions := parseFlags()
+	providedFlagNames := collectProvidedFlagNames()
+
+	// Merge optional config files before validation and interactive prompts.
+	if err := applyConfigFiles(programOptions, providedFlagNames); err != nil {
+		return fail(2, "%w", err)
+	}
 
 	// Validate static flag constraints and optional env-based password input.
 	if err := validateOptions(programOptions); err != nil {
@@ -154,6 +167,8 @@ func parseFlags() *options {
 
 	flag.StringVar(&programOptions.pubKey, "pubkey", "", "Public key text (e.g. ssh-ed25519 AAAA...)")
 	flag.StringVar(&programOptions.pubKeyFile, "pubkey-file", "", "Path to public key file")
+	flag.StringVar(&programOptions.jsonFile, "json-file", "", "Path to JSON config file")
+	flag.StringVar(&programOptions.envFile, "env-file", "", "Path to .env config file")
 
 	flag.IntVar(&programOptions.port, "port", defaultSSHPort, "Default SSH port when not specified in server entry")
 	flag.IntVar(&programOptions.timeoutSec, "timeout", defaultTimeoutSeconds, "SSH timeout in seconds")
@@ -163,6 +178,811 @@ func parseFlags() *options {
 
 	flag.Parse()
 	return programOptions
+}
+
+// jsonConfigOptions models optional keys accepted from a JSON config file.
+type jsonConfigOptions struct {
+	Server                *string `json:"server"`
+	Servers               *string `json:"servers"`
+	ServersFile           *string `json:"servers_file"`
+	User                  *string `json:"user"`
+	Password              *string `json:"password"`
+	PasswordEnv           *string `json:"password_env"`
+	PubKey                *string `json:"pubkey"`
+	PubKeyFile            *string `json:"pubkey_file"`
+	Port                  *int    `json:"port"`
+	Timeout               *int    `json:"timeout"`
+	InsecureIgnoreHostKey *bool   `json:"insecure_ignore_host_key"`
+	KnownHosts            *string `json:"known_hosts"`
+}
+
+// collectProvidedFlagNames captures flags explicitly set on the command line.
+func collectProvidedFlagNames() map[string]bool {
+	providedFlagNames := map[string]bool{}
+	flag.Visit(func(currentFlag *flag.Flag) {
+		providedFlagNames[currentFlag.Name] = true
+	})
+	return providedFlagNames
+}
+
+// wasFlagProvided checks whether a specific CLI flag was explicitly set.
+func wasFlagProvided(providedFlagNames map[string]bool, flagName string) bool {
+	return providedFlagNames[flagName]
+}
+
+const (
+	configSourceTypeDotEnv = "dotenv"
+	configSourceTypeJSON   = "json"
+)
+
+// configSourceSelection describes one chosen config file source.
+type configSourceSelection struct {
+	sourceType string
+	sourcePath string
+}
+
+// applyConfigFiles merges optional JSON/.env file values into options.
+func applyConfigFiles(programOptions *options, providedFlagNames map[string]bool) error {
+	inputReader := bufio.NewReader(os.Stdin)
+
+	selectedConfigSource, err := selectConfigSource(programOptions, inputReader)
+	if err != nil {
+		return err
+	}
+	if selectedConfigSource.sourceType == "" {
+		return nil
+	}
+
+	loadedFieldNames := map[string]bool{}
+	switch selectedConfigSource.sourceType {
+	case configSourceTypeDotEnv:
+		programOptions.envFile = selectedConfigSource.sourcePath
+		programOptions.jsonFile = ""
+		loadedFieldNames, err = applyDotEnvConfigFileWithMetadata(programOptions, providedFlagNames)
+	case configSourceTypeJSON:
+		programOptions.jsonFile = selectedConfigSource.sourcePath
+		programOptions.envFile = ""
+		loadedFieldNames, err = applyJSONConfigFileWithMetadata(programOptions, providedFlagNames)
+	default:
+		return fmt.Errorf("unsupported config source type %q", selectedConfigSource.sourceType)
+	}
+	if err != nil {
+		return err
+	}
+
+	// Confirmation is mandatory for loaded config values to reduce accidental reuse of stale data.
+	if !isInteractiveSession() {
+		return errors.New("config file confirmation requires an interactive terminal")
+	}
+
+	return confirmLoadedConfigFields(inputReader, programOptions, loadedFieldNames)
+}
+
+// selectConfigSource resolves which config source should be loaded for this run.
+func selectConfigSource(programOptions *options, inputReader *bufio.Reader) (configSourceSelection, error) {
+	flagBasedSelection, selectionWasProvided, err := resolveConfigSourceFromFlags(programOptions, inputReader)
+	if err != nil {
+		return configSourceSelection{}, err
+	}
+	if selectionWasProvided {
+		return flagBasedSelection, nil
+	}
+
+	return discoverConfigSourceNearBinary(programOptions, inputReader)
+}
+
+// resolveConfigSourceFromFlags handles -env-file / -json-file selection and conflict resolution.
+func resolveConfigSourceFromFlags(programOptions *options, inputReader *bufio.Reader) (configSourceSelection, bool, error) {
+	explicitDotEnvPath := strings.TrimSpace(programOptions.envFile)
+	explicitJSONPath := strings.TrimSpace(programOptions.jsonFile)
+
+	if explicitDotEnvPath == "" && explicitJSONPath == "" {
+		return configSourceSelection{}, false, nil
+	}
+
+	if explicitDotEnvPath != "" && explicitJSONPath != "" {
+		if !isInteractiveSession() {
+			return configSourceSelection{}, false, errors.New("both -env-file and -json-file are set; choose one in an interactive terminal")
+		}
+
+		choice, err := promptConfigSourceMenu(inputReader, explicitDotEnvPath, explicitJSONPath, false)
+		if err != nil {
+			return configSourceSelection{}, false, err
+		}
+
+		switch choice {
+		case configSourceTypeDotEnv:
+			programOptions.envFile = explicitDotEnvPath
+			programOptions.jsonFile = ""
+			return configSourceSelection{sourceType: configSourceTypeDotEnv, sourcePath: explicitDotEnvPath}, true, nil
+		case configSourceTypeJSON:
+			programOptions.jsonFile = explicitJSONPath
+			programOptions.envFile = ""
+			return configSourceSelection{sourceType: configSourceTypeJSON, sourcePath: explicitJSONPath}, true, nil
+		default:
+			return configSourceSelection{}, false, errors.New("invalid source choice")
+		}
+	}
+
+	if explicitDotEnvPath != "" {
+		programOptions.jsonFile = ""
+		return configSourceSelection{sourceType: configSourceTypeDotEnv, sourcePath: explicitDotEnvPath}, true, nil
+	}
+
+	programOptions.envFile = ""
+	return configSourceSelection{sourceType: configSourceTypeJSON, sourcePath: explicitJSONPath}, true, nil
+}
+
+// discoverConfigSourceNearBinary checks for config files beside the executable and prompts for usage.
+func discoverConfigSourceNearBinary(programOptions *options, inputReader *bufio.Reader) (configSourceSelection, error) {
+	if !isInteractiveSession() {
+		return configSourceSelection{}, nil
+	}
+
+	dotEnvPath, jsonConfigPath, err := discoverConfigFilesNearBinary()
+	if err != nil {
+		return configSourceSelection{}, err
+	}
+
+	if dotEnvPath == "" && jsonConfigPath == "" {
+		return configSourceSelection{}, nil
+	}
+
+	if dotEnvPath != "" && jsonConfigPath != "" {
+		choice, err := promptConfigSourceMenu(inputReader, dotEnvPath, jsonConfigPath, true)
+		if err != nil {
+			return configSourceSelection{}, err
+		}
+
+		switch choice {
+		case configSourceTypeDotEnv:
+			programOptions.envFile = dotEnvPath
+			programOptions.jsonFile = ""
+			return configSourceSelection{sourceType: configSourceTypeDotEnv, sourcePath: dotEnvPath}, nil
+		case configSourceTypeJSON:
+			programOptions.jsonFile = jsonConfigPath
+			programOptions.envFile = ""
+			return configSourceSelection{sourceType: configSourceTypeJSON, sourcePath: jsonConfigPath}, nil
+		default:
+			return configSourceSelection{}, nil
+		}
+	}
+
+	if dotEnvPath != "" {
+		useDotEnv, err := promptUseSingleConfigSource(inputReader, ".env", dotEnvPath)
+		if err != nil {
+			return configSourceSelection{}, err
+		}
+		if useDotEnv {
+			programOptions.envFile = dotEnvPath
+			programOptions.jsonFile = ""
+			return configSourceSelection{sourceType: configSourceTypeDotEnv, sourcePath: dotEnvPath}, nil
+		}
+		return configSourceSelection{}, nil
+	}
+
+	useJSONConfig, err := promptUseSingleConfigSource(inputReader, "config.json", jsonConfigPath)
+	if err != nil {
+		return configSourceSelection{}, err
+	}
+	if useJSONConfig {
+		programOptions.jsonFile = jsonConfigPath
+		programOptions.envFile = ""
+		return configSourceSelection{sourceType: configSourceTypeJSON, sourcePath: jsonConfigPath}, nil
+	}
+
+	return configSourceSelection{}, nil
+}
+
+// discoverConfigFilesNearBinary returns existing .env/config.json paths beside the executable.
+func discoverConfigFilesNearBinary() (string, string, error) {
+	executablePath, err := os.Executable()
+	if err != nil {
+		return "", "", fmt.Errorf("resolve executable path: %w", err)
+	}
+
+	executableDirectory := filepath.Dir(executablePath)
+	dotEnvPath := filepath.Join(executableDirectory, defaultBinaryDotEnvFilename)
+	jsonConfigPath := filepath.Join(executableDirectory, defaultBinaryJSONConfigFilename)
+
+	if !fileExists(dotEnvPath) {
+		dotEnvPath = ""
+	}
+	if !fileExists(jsonConfigPath) {
+		jsonConfigPath = ""
+	}
+
+	return dotEnvPath, jsonConfigPath, nil
+}
+
+// promptConfigSourceMenu presents a numbered selection when multiple config sources are available.
+func promptConfigSourceMenu(inputReader *bufio.Reader, dotEnvPath, jsonConfigPath string, allowSkip bool) (string, error) {
+	for {
+		fmt.Println("Config files detected. Choose which one to use:")
+		fmt.Printf("1) .env (%s)\n", dotEnvPath)
+		fmt.Printf("2) config.json (%s)\n", jsonConfigPath)
+		if allowSkip {
+			fmt.Println("3) Do not use any config file")
+		}
+
+		selectionPrompt := "Select option [1-2]: "
+		if allowSkip {
+			selectionPrompt = "Select option [1-3]: "
+		}
+
+		selection, err := promptLine(inputReader, selectionPrompt)
+		if err != nil {
+			return "", err
+		}
+
+		switch strings.TrimSpace(selection) {
+		case "1":
+			return configSourceTypeDotEnv, nil
+		case "2":
+			return configSourceTypeJSON, nil
+		case "3":
+			if allowSkip {
+				return "", nil
+			}
+		}
+
+		fmt.Println("Invalid selection. Please enter one of the listed numbers.")
+	}
+}
+
+// promptUseSingleConfigSource asks whether the discovered config file should be used.
+func promptUseSingleConfigSource(inputReader *bufio.Reader, displayName, sourcePath string) (bool, error) {
+	for {
+		answer, err := promptLine(inputReader, fmt.Sprintf("Found %s next to the binary at %q. Use it? [y/n]: ", displayName, sourcePath))
+		if err != nil {
+			return false, err
+		}
+
+		switch strings.ToLower(strings.TrimSpace(answer)) {
+		case "y", "yes":
+			return true, nil
+		case "n", "no":
+			return false, nil
+		}
+
+		fmt.Println("Please answer with y or n.")
+	}
+}
+
+// isInteractiveSession reports whether user prompts can be shown reliably.
+func isInteractiveSession() bool {
+	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+}
+
+// fileExists reports whether the given path exists and is not a directory.
+func fileExists(path string) bool {
+	fileInfo, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !fileInfo.IsDir()
+}
+
+// applyJSONConfigFile reads and applies values from -json-file when provided.
+func applyJSONConfigFile(programOptions *options, providedFlagNames map[string]bool) error {
+	_, err := applyJSONConfigFileWithMetadata(programOptions, providedFlagNames)
+	return err
+}
+
+// applyJSONConfigFileWithMetadata reads JSON config values and tracks which fields were loaded.
+func applyJSONConfigFileWithMetadata(programOptions *options, providedFlagNames map[string]bool) (map[string]bool, error) {
+	loadedFieldNames := map[string]bool{}
+
+	if strings.TrimSpace(programOptions.jsonFile) == "" {
+		return loadedFieldNames, nil
+	}
+
+	jsonFilePath, err := expandHomePath(strings.TrimSpace(programOptions.jsonFile))
+	if err != nil {
+		return nil, fmt.Errorf("resolve json config path: %w", err)
+	}
+
+	jsonBytes, err := os.ReadFile(jsonFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("read json config file: %w", err)
+	}
+
+	jsonDecoder := json.NewDecoder(strings.NewReader(string(jsonBytes)))
+	jsonDecoder.DisallowUnknownFields()
+
+	var parsedJSONConfig jsonConfigOptions
+	if err := jsonDecoder.Decode(&parsedJSONConfig); err != nil {
+		return nil, fmt.Errorf("parse json config file: %w", err)
+	}
+
+	var trailingContentCheck struct{}
+	if err := jsonDecoder.Decode(&trailingContentCheck); !errors.Is(err, io.EOF) {
+		return nil, errors.New("json config file must contain exactly one JSON object")
+	}
+
+	if parsedJSONConfig.Server != nil && !wasFlagProvided(providedFlagNames, "server") {
+		programOptions.server = strings.TrimSpace(*parsedJSONConfig.Server)
+		loadedFieldNames["server"] = true
+	}
+	if parsedJSONConfig.Servers != nil && !wasFlagProvided(providedFlagNames, "servers") {
+		programOptions.servers = strings.TrimSpace(*parsedJSONConfig.Servers)
+		loadedFieldNames["servers"] = true
+	}
+	if parsedJSONConfig.ServersFile != nil && !wasFlagProvided(providedFlagNames, "servers-file") {
+		programOptions.serversFile = strings.TrimSpace(*parsedJSONConfig.ServersFile)
+		loadedFieldNames["serversFile"] = true
+	}
+	if parsedJSONConfig.User != nil && !wasFlagProvided(providedFlagNames, "user") {
+		programOptions.user = strings.TrimSpace(*parsedJSONConfig.User)
+		loadedFieldNames["user"] = true
+	}
+	if parsedJSONConfig.Password != nil && !wasFlagProvided(providedFlagNames, "password") {
+		programOptions.password = *parsedJSONConfig.Password
+		loadedFieldNames["password"] = true
+	}
+	if parsedJSONConfig.PasswordEnv != nil && !wasFlagProvided(providedFlagNames, "password-env") {
+		programOptions.passwordEnv = strings.TrimSpace(*parsedJSONConfig.PasswordEnv)
+		loadedFieldNames["passwordEnv"] = true
+	}
+	if parsedJSONConfig.PubKey != nil && !wasFlagProvided(providedFlagNames, "pubkey") {
+		programOptions.pubKey = *parsedJSONConfig.PubKey
+		loadedFieldNames["pubKey"] = true
+	}
+	if parsedJSONConfig.PubKeyFile != nil && !wasFlagProvided(providedFlagNames, "pubkey-file") {
+		programOptions.pubKeyFile = strings.TrimSpace(*parsedJSONConfig.PubKeyFile)
+		loadedFieldNames["pubKeyFile"] = true
+	}
+	if parsedJSONConfig.Port != nil && !wasFlagProvided(providedFlagNames, "port") {
+		programOptions.port = *parsedJSONConfig.Port
+		loadedFieldNames["port"] = true
+	}
+	if parsedJSONConfig.Timeout != nil && !wasFlagProvided(providedFlagNames, "timeout") {
+		programOptions.timeoutSec = *parsedJSONConfig.Timeout
+		loadedFieldNames["timeoutSec"] = true
+	}
+	if parsedJSONConfig.InsecureIgnoreHostKey != nil && !wasFlagProvided(providedFlagNames, "insecure-ignore-host-key") {
+		programOptions.insecureIgnoreHostKey = *parsedJSONConfig.InsecureIgnoreHostKey
+		loadedFieldNames["insecureIgnoreHostKey"] = true
+	}
+	if parsedJSONConfig.KnownHosts != nil && !wasFlagProvided(providedFlagNames, "known-hosts") {
+		programOptions.knownHosts = strings.TrimSpace(*parsedJSONConfig.KnownHosts)
+		loadedFieldNames["knownHosts"] = true
+	}
+
+	return loadedFieldNames, nil
+}
+
+// applyDotEnvConfigFile reads and applies values from -env-file when provided.
+func applyDotEnvConfigFile(programOptions *options, providedFlagNames map[string]bool) error {
+	_, err := applyDotEnvConfigFileWithMetadata(programOptions, providedFlagNames)
+	return err
+}
+
+// applyDotEnvConfigFileWithMetadata reads .env config values and tracks which fields were loaded.
+func applyDotEnvConfigFileWithMetadata(programOptions *options, providedFlagNames map[string]bool) (map[string]bool, error) {
+	loadedFieldNames := map[string]bool{}
+
+	if strings.TrimSpace(programOptions.envFile) == "" {
+		return loadedFieldNames, nil
+	}
+
+	envFilePath, err := expandHomePath(strings.TrimSpace(programOptions.envFile))
+	if err != nil {
+		return nil, fmt.Errorf("resolve .env path: %w", err)
+	}
+
+	envBytes, err := os.ReadFile(envFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("read .env file: %w", err)
+	}
+
+	parsedEnvValues, err := parseDotEnvContent(string(envBytes))
+	if err != nil {
+		return nil, fmt.Errorf("parse .env file: %w", err)
+	}
+
+	if serverValue, keyExists := parsedEnvValues["SERVER"]; keyExists && !wasFlagProvided(providedFlagNames, "server") {
+		programOptions.server = strings.TrimSpace(serverValue)
+		loadedFieldNames["server"] = true
+	}
+	if serversValue, keyExists := parsedEnvValues["SERVERS"]; keyExists && !wasFlagProvided(providedFlagNames, "servers") {
+		programOptions.servers = strings.TrimSpace(serversValue)
+		loadedFieldNames["servers"] = true
+	}
+	if serversFileValue, keyExists := parsedEnvValues["SERVERS_FILE"]; keyExists && !wasFlagProvided(providedFlagNames, "servers-file") {
+		programOptions.serversFile = strings.TrimSpace(serversFileValue)
+		loadedFieldNames["serversFile"] = true
+	}
+	if userValue, keyExists := parsedEnvValues["USER"]; keyExists && !wasFlagProvided(providedFlagNames, "user") {
+		programOptions.user = strings.TrimSpace(userValue)
+		loadedFieldNames["user"] = true
+	}
+	if passwordValue, keyExists := parsedEnvValues["PASSWORD"]; keyExists && !wasFlagProvided(providedFlagNames, "password") {
+		programOptions.password = passwordValue
+		loadedFieldNames["password"] = true
+	}
+	if passwordEnvValue, keyExists := parsedEnvValues["PASSWORD_ENV"]; keyExists && !wasFlagProvided(providedFlagNames, "password-env") {
+		programOptions.passwordEnv = strings.TrimSpace(passwordEnvValue)
+		loadedFieldNames["passwordEnv"] = true
+	}
+	if publicKeyValue, keyExists := parsedEnvValues["PUBKEY"]; keyExists && !wasFlagProvided(providedFlagNames, "pubkey") {
+		programOptions.pubKey = publicKeyValue
+		loadedFieldNames["pubKey"] = true
+	}
+	if publicKeyFileValue, keyExists := parsedEnvValues["PUBKEY_FILE"]; keyExists && !wasFlagProvided(providedFlagNames, "pubkey-file") {
+		programOptions.pubKeyFile = strings.TrimSpace(publicKeyFileValue)
+		loadedFieldNames["pubKeyFile"] = true
+	}
+	if portValue, keyExists := parsedEnvValues["PORT"]; keyExists && !wasFlagProvided(providedFlagNames, "port") {
+		portNumber, conversionErr := strconv.Atoi(strings.TrimSpace(portValue))
+		if conversionErr != nil {
+			return nil, fmt.Errorf(".env key PORT must be an integer: %w", conversionErr)
+		}
+		programOptions.port = portNumber
+		loadedFieldNames["port"] = true
+	}
+	if timeoutValue, keyExists := parsedEnvValues["TIMEOUT"]; keyExists && !wasFlagProvided(providedFlagNames, "timeout") {
+		timeoutSeconds, conversionErr := strconv.Atoi(strings.TrimSpace(timeoutValue))
+		if conversionErr != nil {
+			return nil, fmt.Errorf(".env key TIMEOUT must be an integer: %w", conversionErr)
+		}
+		programOptions.timeoutSec = timeoutSeconds
+		loadedFieldNames["timeoutSec"] = true
+	}
+	if insecureValue, keyExists := parsedEnvValues["INSECURE_IGNORE_HOST_KEY"]; keyExists && !wasFlagProvided(providedFlagNames, "insecure-ignore-host-key") {
+		insecureMode, conversionErr := strconv.ParseBool(strings.TrimSpace(insecureValue))
+		if conversionErr != nil {
+			return nil, fmt.Errorf(".env key INSECURE_IGNORE_HOST_KEY must be a boolean: %w", conversionErr)
+		}
+		programOptions.insecureIgnoreHostKey = insecureMode
+		loadedFieldNames["insecureIgnoreHostKey"] = true
+	}
+	if knownHostsValue, keyExists := parsedEnvValues["KNOWN_HOSTS"]; keyExists && !wasFlagProvided(providedFlagNames, "known-hosts") {
+		programOptions.knownHosts = strings.TrimSpace(knownHostsValue)
+		loadedFieldNames["knownHosts"] = true
+	}
+
+	return loadedFieldNames, nil
+}
+
+// parseDotEnvContent parses KEY=VALUE lines from .env text.
+func parseDotEnvContent(dotEnvContent string) (map[string]string, error) {
+	parsedValues := map[string]string{}
+
+	lineScanner := bufio.NewScanner(strings.NewReader(normalizeLF(dotEnvContent)))
+	lineNumber := 0
+	for lineScanner.Scan() {
+		lineNumber++
+		line := strings.TrimSpace(lineScanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if strings.HasPrefix(line, "export ") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+		}
+
+		separatorIndex := strings.Index(line, "=")
+		if separatorIndex <= 0 {
+			return nil, fmt.Errorf("line %d: expected KEY=VALUE", lineNumber)
+		}
+
+		key := strings.TrimSpace(line[:separatorIndex])
+		if key == "" {
+			return nil, fmt.Errorf("line %d: key is empty", lineNumber)
+		}
+
+		rawValue := strings.TrimSpace(line[separatorIndex+1:])
+		parsedValue, err := parseDotEnvValue(rawValue)
+		if err != nil {
+			return nil, fmt.Errorf("line %d: %w", lineNumber, err)
+		}
+
+		parsedValues[strings.ToUpper(key)] = parsedValue
+	}
+
+	if err := lineScanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return parsedValues, nil
+}
+
+// parseDotEnvValue parses one .env value with simple quote and inline-comment support.
+func parseDotEnvValue(rawValue string) (string, error) {
+	if rawValue == "" {
+		return "", nil
+	}
+
+	if strings.HasPrefix(rawValue, `"`) {
+		if !strings.HasSuffix(rawValue, `"`) || len(rawValue) == 1 {
+			return "", errors.New("unterminated double-quoted value")
+		}
+		parsedValue, err := strconv.Unquote(rawValue)
+		if err != nil {
+			return "", fmt.Errorf("invalid double-quoted value: %w", err)
+		}
+		return parsedValue, nil
+	}
+
+	if strings.HasPrefix(rawValue, "'") {
+		if !strings.HasSuffix(rawValue, "'") || len(rawValue) == 1 {
+			return "", errors.New("unterminated single-quoted value")
+		}
+		return rawValue[1 : len(rawValue)-1], nil
+	}
+
+	if inlineCommentIndex := strings.Index(rawValue, " #"); inlineCommentIndex >= 0 {
+		rawValue = rawValue[:inlineCommentIndex]
+	}
+
+	return strings.TrimSpace(rawValue), nil
+}
+
+// confirmLoadedConfigFields asks the user to verify each loaded config value before continuing.
+func confirmLoadedConfigFields(inputReader *bufio.Reader, programOptions *options, loadedFieldNames map[string]bool) error {
+	if len(loadedFieldNames) == 0 {
+		return nil
+	}
+
+	acceptAllRemainingValues := false
+	fmt.Println("Review loaded configuration values. For each field choose: yes (y), no/edit (n), or yes to all remaining (a).")
+
+	for _, fieldName := range configuredFieldOrder() {
+		if !loadedFieldNames[fieldName] {
+			continue
+		}
+		if acceptAllRemainingValues {
+			continue
+		}
+
+		for {
+			fieldPreview := previewConfiguredField(programOptions, fieldName)
+			fmt.Printf("%s: %s\n", configFieldDisplayName(fieldName), fieldPreview)
+
+			answer, err := promptLine(inputReader, "Use this value? [y/n/a]: ")
+			if err != nil {
+				return err
+			}
+
+			switch strings.ToLower(strings.TrimSpace(answer)) {
+			case "y", "yes":
+				goto confirmed
+			case "a", "all":
+				acceptAllRemainingValues = true
+				goto confirmed
+			case "n", "no":
+				if err := promptReplacementValueForField(inputReader, programOptions, fieldName); err != nil {
+					return err
+				}
+				goto confirmed
+			default:
+				fmt.Println("Please answer with y, n, or a.")
+			}
+		}
+
+	confirmed:
+	}
+
+	return nil
+}
+
+// configuredFieldOrder defines the stable display/confirmation order for loaded config values.
+func configuredFieldOrder() []string {
+	return []string{
+		"server",
+		"servers",
+		"serversFile",
+		"user",
+		"password",
+		"passwordEnv",
+		"pubKey",
+		"pubKeyFile",
+		"port",
+		"timeoutSec",
+		"insecureIgnoreHostKey",
+		"knownHosts",
+	}
+}
+
+// configFieldDisplayName returns a human-friendly name for one config field.
+func configFieldDisplayName(fieldName string) string {
+	switch fieldName {
+	case "server":
+		return "Server"
+	case "servers":
+		return "Servers"
+	case "serversFile":
+		return "Servers File"
+	case "user":
+		return "SSH User"
+	case "password":
+		return "SSH Password"
+	case "passwordEnv":
+		return "Password Env Variable"
+	case "pubKey":
+		return "Public Key"
+	case "pubKeyFile":
+		return "Public Key File"
+	case "port":
+		return "Default Port"
+	case "timeoutSec":
+		return "Timeout (Seconds)"
+	case "insecureIgnoreHostKey":
+		return "Insecure Ignore Host Key"
+	case "knownHosts":
+		return "Known Hosts Path"
+	default:
+		return fieldName
+	}
+}
+
+// previewConfiguredField returns a safe preview for one field value.
+func previewConfiguredField(programOptions *options, fieldName string) string {
+	switch fieldName {
+	case "server":
+		return previewTextValue(programOptions.server, 80)
+	case "servers":
+		return previewTextValue(programOptions.servers, 80)
+	case "serversFile":
+		return previewTextValue(programOptions.serversFile, 80)
+	case "user":
+		return previewTextValue(programOptions.user, 80)
+	case "password":
+		return maskSensitiveValue(programOptions.password)
+	case "passwordEnv":
+		return previewTextValue(programOptions.passwordEnv, 80)
+	case "pubKey":
+		return previewPublicKeyValue(programOptions.pubKey)
+	case "pubKeyFile":
+		return previewTextValue(programOptions.pubKeyFile, 80)
+	case "port":
+		return strconv.Itoa(programOptions.port)
+	case "timeoutSec":
+		return strconv.Itoa(programOptions.timeoutSec)
+	case "insecureIgnoreHostKey":
+		return strconv.FormatBool(programOptions.insecureIgnoreHostKey)
+	case "knownHosts":
+		return previewTextValue(programOptions.knownHosts, 80)
+	default:
+		return "<unknown>"
+	}
+}
+
+// previewTextValue renders a readable single-line preview.
+func previewTextValue(value string, maxLength int) string {
+	trimmedValue := strings.TrimSpace(value)
+	if trimmedValue == "" {
+		return "<empty>"
+	}
+	if len(trimmedValue) <= maxLength {
+		return trimmedValue
+	}
+	return trimmedValue[:maxLength] + "..."
+}
+
+// previewPublicKeyValue renders a readable preview for public keys.
+func previewPublicKeyValue(publicKey string) string {
+	return previewTextValue(publicKey, 120)
+}
+
+// maskSensitiveValue hides most characters while still showing a short prefix.
+func maskSensitiveValue(value string) string {
+	if value == "" {
+		return "<empty>"
+	}
+
+	visiblePrefixLength := 3
+	if len(value) <= visiblePrefixLength {
+		visiblePrefixLength = 1
+	}
+	return value[:visiblePrefixLength] + "***"
+}
+
+// promptReplacementValueForField asks for a replacement value when the user rejects one field.
+func promptReplacementValueForField(inputReader *bufio.Reader, programOptions *options, fieldName string) error {
+	switch fieldName {
+	case "server":
+		replacementValue, err := promptLine(inputReader, "Enter updated server (leave empty to clear): ")
+		if err != nil {
+			return err
+		}
+		programOptions.server = strings.TrimSpace(replacementValue)
+	case "servers":
+		replacementValue, err := promptLine(inputReader, "Enter updated servers list (leave empty to clear): ")
+		if err != nil {
+			return err
+		}
+		programOptions.servers = strings.TrimSpace(replacementValue)
+	case "serversFile":
+		replacementValue, err := promptLine(inputReader, "Enter updated servers file path (leave empty to clear): ")
+		if err != nil {
+			return err
+		}
+		programOptions.serversFile = strings.TrimSpace(replacementValue)
+	case "user":
+		replacementValue, err := promptLine(inputReader, "Enter updated SSH username (leave empty to clear): ")
+		if err != nil {
+			return err
+		}
+		programOptions.user = strings.TrimSpace(replacementValue)
+	case "password":
+		replacementPassword, err := promptPasswordAllowEmpty(inputReader, "Enter updated SSH password (leave empty to clear): ")
+		if err != nil {
+			return err
+		}
+		programOptions.password = strings.TrimSpace(replacementPassword)
+	case "passwordEnv":
+		replacementValue, err := promptLine(inputReader, "Enter updated password environment variable (leave empty to clear): ")
+		if err != nil {
+			return err
+		}
+		programOptions.passwordEnv = strings.TrimSpace(replacementValue)
+	case "pubKey":
+		replacementValue, err := promptLine(inputReader, "Enter updated public key text (leave empty to clear): ")
+		if err != nil {
+			return err
+		}
+		programOptions.pubKey = strings.TrimSpace(replacementValue)
+	case "pubKeyFile":
+		replacementValue, err := promptLine(inputReader, "Enter updated public key file path (leave empty to clear): ")
+		if err != nil {
+			return err
+		}
+		programOptions.pubKeyFile = strings.TrimSpace(replacementValue)
+	case "port":
+		for {
+			replacementValue, err := promptLine(inputReader, "Enter updated default port: ")
+			if err != nil {
+				return err
+			}
+			parsedPort, parseErr := strconv.Atoi(strings.TrimSpace(replacementValue))
+			if parseErr != nil {
+				fmt.Println("Port must be an integer.")
+				continue
+			}
+			programOptions.port = parsedPort
+			break
+		}
+	case "timeoutSec":
+		for {
+			replacementValue, err := promptLine(inputReader, "Enter updated timeout in seconds: ")
+			if err != nil {
+				return err
+			}
+			parsedTimeout, parseErr := strconv.Atoi(strings.TrimSpace(replacementValue))
+			if parseErr != nil {
+				fmt.Println("Timeout must be an integer.")
+				continue
+			}
+			programOptions.timeoutSec = parsedTimeout
+			break
+		}
+	case "insecureIgnoreHostKey":
+		for {
+			replacementValue, err := promptLine(inputReader, "Enter updated insecure-ignore-host-key value (true/false): ")
+			if err != nil {
+				return err
+			}
+			parsedValue, parseErr := strconv.ParseBool(strings.TrimSpace(replacementValue))
+			if parseErr != nil {
+				fmt.Println("Value must be true or false.")
+				continue
+			}
+			programOptions.insecureIgnoreHostKey = parsedValue
+			break
+		}
+	case "knownHosts":
+		replacementValue, err := promptLine(inputReader, "Enter updated known_hosts path (leave empty to clear): ")
+		if err != nil {
+			return err
+		}
+		programOptions.knownHosts = strings.TrimSpace(replacementValue)
+	default:
+		return fmt.Errorf("unsupported config field %q", fieldName)
+	}
+
+	return nil
 }
 
 // validateOptions checks basic flag validity and handles password-env resolution.
@@ -368,6 +1188,27 @@ func promptPassword(reader *bufio.Reader, label string) (string, error) {
 		}
 		fmt.Println("Value is required.")
 	}
+}
+
+// promptPasswordAllowEmpty reads one password value and allows empty responses.
+func promptPasswordAllowEmpty(reader *bufio.Reader, label string) (string, error) {
+	fmt.Print(label)
+
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		bytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			return "", err
+		}
+		return string(bytes), nil
+	}
+
+	line, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", err
+	}
+
+	return strings.TrimSpace(line), nil
 }
 
 // resolveHosts merges host inputs, normalizes addresses, deduplicates, and sorts.

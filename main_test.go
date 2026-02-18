@@ -189,6 +189,174 @@ func TestAddAuthorizedKeyScriptLFOnly(testContext *testing.T) {
 	}
 }
 
+// TestApplyJSONConfigFile validates JSON config merge behavior and CLI precedence.
+func TestApplyJSONConfigFile(testContext *testing.T) {
+	testContext.Parallel()
+
+	tempDirectory := testContext.TempDir()
+	jsonConfigPath := filepath.Join(tempDirectory, "config.json")
+	jsonConfigContent := `{
+  "server": "json-host",
+  "servers": "json-a,json-b",
+  "servers_file": "./json-servers.txt",
+  "user": "json-user",
+  "password": "json-password",
+  "password_env": "JSON_PASSWORD",
+  "pubkey": "ssh-ed25519 AAAAJSON",
+  "pubkey_file": "./json-id.pub",
+  "port": 2200,
+  "timeout": 35,
+  "insecure_ignore_host_key": true,
+  "known_hosts": "~/.ssh/json_known_hosts"
+}`
+	if writeErr := os.WriteFile(jsonConfigPath, []byte(jsonConfigContent), 0o600); writeErr != nil {
+		testContext.Fatalf("write json config: %v", writeErr)
+	}
+
+	programOptions := &options{
+		jsonFile:   jsonConfigPath,
+		user:       "cli-user",
+		port:       2222,
+		timeoutSec: defaultTimeoutSeconds,
+	}
+	providedFlagNames := map[string]bool{
+		"user": true,
+		"port": true,
+	}
+
+	if applyErr := applyJSONConfigFile(programOptions, providedFlagNames); applyErr != nil {
+		testContext.Fatalf("apply json config: %v", applyErr)
+	}
+
+	if programOptions.user != "cli-user" {
+		testContext.Fatalf("user overwritten by json config")
+	}
+	if programOptions.port != 2222 {
+		testContext.Fatalf("port overwritten by json config")
+	}
+	if programOptions.server != "json-host" {
+		testContext.Fatalf("server not loaded from json config")
+	}
+	if programOptions.password != "json-password" {
+		testContext.Fatalf("password not loaded from json config")
+	}
+	if programOptions.timeoutSec != 35 {
+		testContext.Fatalf("timeout not loaded from json config")
+	}
+	if !programOptions.insecureIgnoreHostKey {
+		testContext.Fatalf("insecure flag not loaded from json config")
+	}
+}
+
+// TestApplyDotEnvConfigFile validates .env parsing and merge behavior.
+func TestApplyDotEnvConfigFile(testContext *testing.T) {
+	testContext.Parallel()
+
+	tempDirectory := testContext.TempDir()
+	dotEnvPath := filepath.Join(tempDirectory, ".env")
+	dotEnvContent := `
+# comment
+SERVER=env-host
+SERVERS=env-a,env-b
+SERVERS_FILE=./env-servers.txt
+export USER=env-user
+PASSWORD='env password'
+PASSWORD_ENV=ENV_PASSWORD
+PUBKEY="ssh-ed25519 AAAAENV"
+PUBKEY_FILE=./env-id.pub
+PORT=2300 # inline comment
+TIMEOUT=40
+INSECURE_IGNORE_HOST_KEY=true
+KNOWN_HOSTS=~/.ssh/env_known_hosts
+`
+	if writeErr := os.WriteFile(dotEnvPath, []byte(dotEnvContent), 0o600); writeErr != nil {
+		testContext.Fatalf("write .env config: %v", writeErr)
+	}
+
+	programOptions := &options{
+		envFile:               dotEnvPath,
+		server:                "cli-host",
+		insecureIgnoreHostKey: false,
+	}
+	providedFlagNames := map[string]bool{
+		"server":                   true,
+		"insecure-ignore-host-key": true,
+	}
+
+	if applyErr := applyDotEnvConfigFile(programOptions, providedFlagNames); applyErr != nil {
+		testContext.Fatalf("apply .env config: %v", applyErr)
+	}
+
+	if programOptions.server != "cli-host" {
+		testContext.Fatalf("server overwritten by .env config")
+	}
+	if programOptions.user != "env-user" {
+		testContext.Fatalf("user not loaded from .env config")
+	}
+	if programOptions.password != "env password" {
+		testContext.Fatalf("password not loaded from .env config")
+	}
+	if programOptions.port != 2300 {
+		testContext.Fatalf("port not loaded from .env config")
+	}
+	if programOptions.timeoutSec != 40 {
+		testContext.Fatalf("timeout not loaded from .env config")
+	}
+	if programOptions.insecureIgnoreHostKey {
+		testContext.Fatalf("insecure flag should remain CLI value")
+	}
+}
+
+// TestApplyConfigFiles ensures both active config sources require interactive selection.
+func TestApplyConfigFiles(testContext *testing.T) {
+	testContext.Parallel()
+
+	tempDirectory := testContext.TempDir()
+
+	jsonConfigPath := filepath.Join(tempDirectory, "config.json")
+	jsonConfigContent := `{"user":"json-user","password":"json-password","server":"json-host"}`
+	if writeErr := os.WriteFile(jsonConfigPath, []byte(jsonConfigContent), 0o600); writeErr != nil {
+		testContext.Fatalf("write json config: %v", writeErr)
+	}
+
+	dotEnvPath := filepath.Join(tempDirectory, ".env")
+	dotEnvContent := "USER=env-user\nPASSWORD=env-password\nSERVER=env-host\n"
+	if writeErr := os.WriteFile(dotEnvPath, []byte(dotEnvContent), 0o600); writeErr != nil {
+		testContext.Fatalf("write .env config: %v", writeErr)
+	}
+
+	programOptions := &options{
+		jsonFile: jsonConfigPath,
+		envFile:  dotEnvPath,
+	}
+
+	applyErr := applyConfigFiles(programOptions, map[string]bool{})
+	if applyErr == nil {
+		testContext.Fatalf("expected selection error when both config sources are active without an interactive terminal")
+	}
+}
+
+// TestApplyDotEnvConfigFileInvalidPort validates numeric conversion errors in .env input.
+func TestApplyDotEnvConfigFileInvalidPort(testContext *testing.T) {
+	testContext.Parallel()
+
+	tempDirectory := testContext.TempDir()
+	dotEnvPath := filepath.Join(tempDirectory, ".env")
+	dotEnvContent := "PORT=not-a-number\n"
+	if writeErr := os.WriteFile(dotEnvPath, []byte(dotEnvContent), 0o600); writeErr != nil {
+		testContext.Fatalf("write .env config: %v", writeErr)
+	}
+
+	programOptions := &options{envFile: dotEnvPath}
+	applyErr := applyDotEnvConfigFile(programOptions, map[string]bool{})
+	if applyErr == nil {
+		testContext.Fatalf("expected invalid PORT error")
+	}
+	if !strings.Contains(applyErr.Error(), "PORT") {
+		testContext.Fatalf("expected PORT error message, got %v", applyErr)
+	}
+}
+
 // generateTestKey synthesizes a valid ed25519 public key for authorized_keys usage.
 func generateTestKey(testContext *testing.T) string {
 	testContext.Helper()
