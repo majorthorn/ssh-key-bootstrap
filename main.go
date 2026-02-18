@@ -30,15 +30,15 @@ const (
 )
 
 // addAuthorizedKeyScript runs remotely and appends the key only if missing.
-const addAuthorizedKeyScript = `set -eu
-umask 077
-mkdir -p ~/.ssh
-touch ~/.ssh/authorized_keys
-chmod 700 ~/.ssh
-chmod 600 ~/.ssh/authorized_keys
-IFS= read -r KEY
-grep -qxF "$KEY" ~/.ssh/authorized_keys || printf '%s\n' "$KEY" >> ~/.ssh/authorized_keys
-`
+// Use explicit "\n" escapes so source-file CRLF does not become part of remote paths.
+const addAuthorizedKeyScript = "set -eu\n" +
+	"umask 077\n" +
+	"mkdir -p ~/.ssh\n" +
+	"touch ~/.ssh/authorized_keys\n" +
+	"chmod 700 ~/.ssh\n" +
+	"chmod 600 ~/.ssh/authorized_keys\n" +
+	"IFS= read -r KEY\n" +
+	"grep -qxF \"$KEY\" ~/.ssh/authorized_keys || printf '%s\\n' \"$KEY\" >> ~/.ssh/authorized_keys\n"
 
 // options groups all command-line flags and prompted values.
 type options struct {
@@ -63,17 +63,17 @@ type statusError struct {
 }
 
 // Error implements the error interface.
-func (e *statusError) Error() string {
-	return e.err.Error()
+func (statusErr *statusError) Error() string {
+	return statusErr.err.Error()
 }
 
 func main() {
 	// Run the full workflow and map failures to explicit process exit codes.
 	if err := run(); err != nil {
-		var se *statusError
-		if errors.As(err, &se) {
-			fmt.Fprintln(os.Stderr, "Error:", se.err)
-			os.Exit(se.code)
+		var statusErr *statusError
+		if errors.As(err, &statusErr) {
+			fmt.Fprintln(os.Stderr, "Error:", statusErr.err)
+			os.Exit(statusErr.code)
 		}
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(2)
@@ -83,33 +83,33 @@ func main() {
 // run orchestrates parsing, prompting, validation, and key installation.
 func run() error {
 	// Parse all CLI flags into one options struct.
-	opts := parseFlags()
+	programOptions := parseFlags()
 
 	// Validate static flag constraints and optional env-based password input.
-	if err := validateOptions(opts); err != nil {
+	if err := validateOptions(programOptions); err != nil {
 		return fail(2, "%w", err)
 	}
 
 	// Prompt only for fields still missing after flags/env processing.
 	inputReader := bufio.NewReader(os.Stdin)
-	if err := fillMissingInputs(inputReader, opts); err != nil {
+	if err := fillMissingInputs(inputReader, programOptions); err != nil {
 		return fail(2, "%w", err)
 	}
 
 	// Build and normalize final host list before networking.
-	hosts, err := resolveHosts(opts.server, opts.servers, opts.serversFile, opts.port)
+	hosts, err := resolveHosts(programOptions.server, programOptions.servers, programOptions.serversFile, programOptions.port)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
 
 	// Parse and validate exactly one authorized key line.
-	key, err := resolvePublicKey(opts.pubKey, opts.pubKeyFile)
+	publicKey, err := resolvePublicKey(programOptions.pubKey, programOptions.pubKeyFile)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
 
 	// Build SSH client config with secure host-key verification by default.
-	clientConfig, err := buildSSHConfig(opts)
+	clientConfig, err := buildSSHConfig(programOptions)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
@@ -117,7 +117,7 @@ func run() error {
 	// Attempt all hosts and keep going to show complete success/failure status.
 	failures := 0
 	for _, host := range hosts {
-		if err := addAuthorizedKey(host, key, clientConfig); err != nil {
+		if err := addAuthorizedKey(host, publicKey, clientConfig); err != nil {
 			failures++
 			fmt.Printf("[FAIL] %s: %v\n", host, err)
 			continue
@@ -142,97 +142,97 @@ func fail(code int, format string, args ...any) error {
 
 // parseFlags binds command-line flags into an options struct.
 func parseFlags() *options {
-	opts := &options{}
+	programOptions := &options{}
 
-	flag.StringVar(&opts.server, "server", "", "Single server (host or host:port)")
-	flag.StringVar(&opts.servers, "servers", "", "Comma-separated servers (host or host:port)")
-	flag.StringVar(&opts.serversFile, "servers-file", "", "File with one server per line")
+	flag.StringVar(&programOptions.server, "server", "", "Single server (host or host:port)")
+	flag.StringVar(&programOptions.servers, "servers", "", "Comma-separated servers (host or host:port)")
+	flag.StringVar(&programOptions.serversFile, "servers-file", "", "File with one server per line")
 
-	flag.StringVar(&opts.user, "user", "", "SSH username")
-	flag.StringVar(&opts.password, "password", "", "SSH password (less secure than prompt)")
-	flag.StringVar(&opts.passwordEnv, "password-env", "", "Environment variable containing SSH password")
+	flag.StringVar(&programOptions.user, "user", "", "SSH username")
+	flag.StringVar(&programOptions.password, "password", "", "SSH password (less secure than prompt)")
+	flag.StringVar(&programOptions.passwordEnv, "password-env", "", "Environment variable containing SSH password")
 
-	flag.StringVar(&opts.pubKey, "pubkey", "", "Public key text (e.g. ssh-ed25519 AAAA...)")
-	flag.StringVar(&opts.pubKeyFile, "pubkey-file", "", "Path to public key file")
+	flag.StringVar(&programOptions.pubKey, "pubkey", "", "Public key text (e.g. ssh-ed25519 AAAA...)")
+	flag.StringVar(&programOptions.pubKeyFile, "pubkey-file", "", "Path to public key file")
 
-	flag.IntVar(&opts.port, "port", defaultSSHPort, "Default SSH port when not specified in server entry")
-	flag.IntVar(&opts.timeoutSec, "timeout", defaultTimeoutSeconds, "SSH timeout in seconds")
+	flag.IntVar(&programOptions.port, "port", defaultSSHPort, "Default SSH port when not specified in server entry")
+	flag.IntVar(&programOptions.timeoutSec, "timeout", defaultTimeoutSeconds, "SSH timeout in seconds")
 
-	flag.BoolVar(&opts.insecureIgnoreHostKey, "insecure-ignore-host-key", false, "Disable host key verification (unsafe)")
-	flag.StringVar(&opts.knownHosts, "known-hosts", defaultKnownHostsPath, "Path to known_hosts file")
+	flag.BoolVar(&programOptions.insecureIgnoreHostKey, "insecure-ignore-host-key", false, "Disable host key verification (unsafe)")
+	flag.StringVar(&programOptions.knownHosts, "known-hosts", defaultKnownHostsPath, "Path to known_hosts file")
 
 	flag.Parse()
-	return opts
+	return programOptions
 }
 
 // validateOptions checks basic flag validity and handles password-env resolution.
-func validateOptions(opts *options) error {
+func validateOptions(programOptions *options) error {
 	// Validate numeric fields early for fast feedback.
-	if opts.port < 1 || opts.port > 65535 {
+	if programOptions.port < 1 || programOptions.port > 65535 {
 		return errors.New("port must be in range 1..65535")
 	}
-	if opts.timeoutSec <= 0 {
+	if programOptions.timeoutSec <= 0 {
 		return errors.New("timeout must be greater than zero")
 	}
 
 	// Enforce one password source to avoid ambiguous precedence.
-	if strings.TrimSpace(opts.password) != "" && strings.TrimSpace(opts.passwordEnv) != "" {
+	if strings.TrimSpace(programOptions.password) != "" && strings.TrimSpace(programOptions.passwordEnv) != "" {
 		return errors.New("use either -password or -password-env, not both")
 	}
 
 	// If requested, load password from environment variable.
-	envName := strings.TrimSpace(opts.passwordEnv)
-	if strings.TrimSpace(opts.password) == "" && envName != "" {
+	envName := strings.TrimSpace(programOptions.passwordEnv)
+	if strings.TrimSpace(programOptions.password) == "" && envName != "" {
 		value := strings.TrimSpace(os.Getenv(envName))
 		if value == "" {
 			return fmt.Errorf("environment variable %q is empty or not set", envName)
 		}
-		opts.password = value
+		programOptions.password = value
 	}
 
 	return nil
 }
 
 // fillMissingInputs interactively collects required values not set via flags/env.
-func fillMissingInputs(inputReader *bufio.Reader, opts *options) error {
+func fillMissingInputs(inputReader *bufio.Reader, programOptions *options) error {
 	var err error
 
 	// Request username when missing.
-	if strings.TrimSpace(opts.user) == "" {
-		opts.user, err = promptRequired(inputReader, "SSH username: ")
+	if strings.TrimSpace(programOptions.user) == "" {
+		programOptions.user, err = promptRequired(inputReader, "SSH username: ")
 		if err != nil {
 			return err
 		}
 	}
 
 	// Request password when still missing after optional env lookup.
-	if strings.TrimSpace(opts.password) == "" {
-		opts.password, err = promptPassword(inputReader, "SSH password: ")
+	if strings.TrimSpace(programOptions.password) == "" {
+		programOptions.password, err = promptPassword(inputReader, "SSH password: ")
 		if err != nil {
 			return err
 		}
 	}
 
 	// Require at least one host source.
-	if strings.TrimSpace(opts.server) == "" &&
-		strings.TrimSpace(opts.servers) == "" &&
-		strings.TrimSpace(opts.serversFile) == "" {
-		opts.servers, err = promptRequired(inputReader, "Servers (comma-separated, host or host:port): ")
+	if strings.TrimSpace(programOptions.server) == "" &&
+		strings.TrimSpace(programOptions.servers) == "" &&
+		strings.TrimSpace(programOptions.serversFile) == "" {
+		programOptions.servers, err = promptRequired(inputReader, "Servers (comma-separated, host or host:port): ")
 		if err != nil {
 			return err
 		}
 	}
 
 	// Require a key source; first ask for file, then fallback to inline key paste.
-	if strings.TrimSpace(opts.pubKey) == "" && strings.TrimSpace(opts.pubKeyFile) == "" {
-		opts.pubKeyFile, err = promptLine(inputReader, "Public key file path (enter to paste key): ")
+	if strings.TrimSpace(programOptions.pubKey) == "" && strings.TrimSpace(programOptions.pubKeyFile) == "" {
+		programOptions.pubKeyFile, err = promptLine(inputReader, "Public key file path (enter to paste key): ")
 		if err != nil {
 			return err
 		}
-		opts.pubKeyFile = strings.TrimSpace(opts.pubKeyFile)
+		programOptions.pubKeyFile = strings.TrimSpace(programOptions.pubKeyFile)
 
-		if opts.pubKeyFile == "" {
-			opts.pubKey, err = promptRequired(inputReader, "Public key text: ")
+		if programOptions.pubKeyFile == "" {
+			programOptions.pubKey, err = promptRequired(inputReader, "Public key text: ")
 			if err != nil {
 				return err
 			}
@@ -243,18 +243,18 @@ func fillMissingInputs(inputReader *bufio.Reader, opts *options) error {
 }
 
 // buildSSHConfig creates the SSH config used for every target host.
-func buildSSHConfig(opts *options) (*ssh.ClientConfig, error) {
+func buildSSHConfig(programOptions *options) (*ssh.ClientConfig, error) {
 	// Build host key callback based on secure/insecure mode.
-	hostKeyCallback, err := buildHostKeyCallback(opts.insecureIgnoreHostKey, opts.knownHosts)
+	hostKeyCallback, err := buildHostKeyCallback(programOptions.insecureIgnoreHostKey, programOptions.knownHosts)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ssh.ClientConfig{
-		User:            opts.user,
-		Auth:            []ssh.AuthMethod{ssh.Password(opts.password)},
+		User:            programOptions.user,
+		Auth:            []ssh.AuthMethod{ssh.Password(programOptions.password)},
 		HostKeyCallback: hostKeyCallback,
-		Timeout:         time.Duration(opts.timeoutSec) * time.Second,
+		Timeout:         time.Duration(programOptions.timeoutSec) * time.Second,
 	}, nil
 }
 
@@ -343,7 +343,7 @@ func promptPassword(reader *bufio.Reader, label string) (string, error) {
 		// Display prompt each attempt.
 		fmt.Print(label)
 
-		var pwd string
+		var passwordInput string
 
 		// Hide password echo on interactive terminals.
 		if term.IsTerminal(int(os.Stdin.Fd())) {
@@ -352,19 +352,19 @@ func promptPassword(reader *bufio.Reader, label string) (string, error) {
 			if err != nil {
 				return "", err
 			}
-			pwd = strings.TrimSpace(string(bytes))
+			passwordInput = strings.TrimSpace(string(bytes))
 		} else {
 			// Fallback for piped input and non-terminal sessions.
 			line, err := reader.ReadString('\n')
 			if err != nil && !errors.Is(err, io.EOF) {
 				return "", err
 			}
-			pwd = strings.TrimSpace(line)
+			passwordInput = strings.TrimSpace(line)
 		}
 
 		// Accept only non-empty passwords.
-		if pwd != "" {
-			return pwd, nil
+		if passwordInput != "" {
+			return passwordInput, nil
 		}
 		fmt.Println("Value is required.")
 	}
@@ -376,18 +376,18 @@ func resolveHosts(server, servers, serversFile string, defaultPort int) ([]strin
 	hostSet := map[string]struct{}{}
 
 	// addHost validates and inserts one host string.
-	addHost := func(raw string) error {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
+	addHost := func(rawHost string) error {
+		rawHost = strings.TrimSpace(rawHost)
+		if rawHost == "" {
 			return nil
 		}
 
-		normalized, err := normalizeHost(raw, defaultPort)
+		normalizedHost, err := normalizeHost(rawHost, defaultPort)
 		if err != nil {
-			return fmt.Errorf("invalid server %q: %w", raw, err)
+			return fmt.Errorf("invalid server %q: %w", rawHost, err)
 		}
 
-		hostSet[normalized] = struct{}{}
+		hostSet[normalizedHost] = struct{}{}
 		return nil
 	}
 
@@ -446,9 +446,9 @@ func resolveHosts(server, servers, serversFile string, defaultPort int) ([]strin
 }
 
 // normalizeHost ensures a host string always has a usable host:port form.
-func normalizeHost(raw string, defaultPort int) (string, error) {
+func normalizeHost(rawHost string, defaultPort int) (string, error) {
 	// If a port is already present, validate and normalize it.
-	if host, port, err := net.SplitHostPort(raw); err == nil {
+	if host, port, err := net.SplitHostPort(rawHost); err == nil {
 		if strings.TrimSpace(host) == "" {
 			return "", errors.New("missing host")
 		}
@@ -462,72 +462,72 @@ func normalizeHost(raw string, defaultPort int) (string, error) {
 	}
 
 	// Handle bracketed IPv6 hosts that omit a port, e.g. "[2001:db8::1]".
-	if strings.HasPrefix(raw, "[") && strings.HasSuffix(raw, "]") {
-		raw = strings.TrimSuffix(strings.TrimPrefix(raw, "["), "]")
+	if strings.HasPrefix(rawHost, "[") && strings.HasSuffix(rawHost, "]") {
+		rawHost = strings.TrimSuffix(strings.TrimPrefix(rawHost, "["), "]")
 	}
 
 	// Reject empty host values after normalization.
-	if strings.TrimSpace(raw) == "" {
+	if strings.TrimSpace(rawHost) == "" {
 		return "", errors.New("missing host")
 	}
 
 	// Add default port and let net.JoinHostPort bracket IPv6 as needed.
-	return net.JoinHostPort(raw, strconv.Itoa(defaultPort)), nil
+	return net.JoinHostPort(rawHost, strconv.Itoa(defaultPort)), nil
 }
 
 // resolvePublicKey loads and validates exactly one authorized key entry.
-func resolvePublicKey(inline, file string) (string, error) {
+func resolvePublicKey(inlinePublicKey, publicKeyFile string) (string, error) {
 	// For clarity, allow only one key source at a time.
-	if strings.TrimSpace(inline) != "" && strings.TrimSpace(file) != "" {
+	if strings.TrimSpace(inlinePublicKey) != "" && strings.TrimSpace(publicKeyFile) != "" {
 		return "", errors.New("use either -pubkey or -pubkey-file, not both")
 	}
 
 	// Require some key source.
-	if strings.TrimSpace(inline) == "" && strings.TrimSpace(file) == "" {
+	if strings.TrimSpace(inlinePublicKey) == "" && strings.TrimSpace(publicKeyFile) == "" {
 		return "", errors.New("public key is required")
 	}
 
 	// Read raw input from file or inline flag.
-	var raw string
-	if strings.TrimSpace(file) != "" {
-		bytes, err := os.ReadFile(file)
+	var rawKeyInput string
+	if strings.TrimSpace(publicKeyFile) != "" {
+		bytes, err := os.ReadFile(publicKeyFile)
 		if err != nil {
 			return "", fmt.Errorf("read pubkey file: %w", err)
 		}
-		raw = string(bytes)
+		rawKeyInput = string(bytes)
 	} else {
-		raw = inline
+		rawKeyInput = inlinePublicKey
 	}
 
 	// Extract one non-comment key line and validate authorized_keys syntax.
-	key, err := extractSingleKey(raw)
+	extractedKey, err := extractSingleKey(rawKeyInput)
 	if err != nil {
 		return "", err
 	}
 
-	if _, _, _, _, err := ssh.ParseAuthorizedKey([]byte(key)); err != nil {
+	if _, _, _, _, err := ssh.ParseAuthorizedKey([]byte(extractedKey)); err != nil {
 		return "", fmt.Errorf("invalid public key format: %w", err)
 	}
 
-	return key, nil
+	return extractedKey, nil
 }
 
 // extractSingleKey accepts one non-empty, non-comment line from the provided text.
-func extractSingleKey(raw string) (string, error) {
+func extractSingleKey(rawKeyInput string) (string, error) {
 	// Track exactly one logical key line.
-	key := ""
-	scanner := bufio.NewScanner(strings.NewReader(raw))
+	extractedKey := ""
+	scanner := bufio.NewScanner(strings.NewReader(rawKeyInput))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
 
-		if key != "" {
+		if extractedKey != "" {
 			return "", errors.New("public key input must contain exactly one key")
 		}
 
-		key = line
+		extractedKey = line
 	}
 
 	// Return scanner errors (rare, but important for very long/bad input).
@@ -536,17 +536,23 @@ func extractSingleKey(raw string) (string, error) {
 	}
 
 	// Ensure at least one usable key line was found.
-	if key == "" {
+	if extractedKey == "" {
 		return "", errors.New("public key is required")
 	}
 
-	return key, nil
+	return extractedKey, nil
+}
+
+// normalizeLF removes carriage returns to prevent CRLF from leaking into remote shells.
+func normalizeLF(value string) string {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	return strings.ReplaceAll(value, "\r", "\n")
 }
 
 // addAuthorizedKey opens SSH session and appends key remotely if it does not exist.
-func addAuthorizedKey(host, key string, cfg *ssh.ClientConfig) error {
+func addAuthorizedKey(hostAddress, publicKey string, clientConfig *ssh.ClientConfig) error {
 	// Establish TCP+SSH connection to target host.
-	client, err := ssh.Dial("tcp", host, cfg)
+	client, err := ssh.Dial("tcp", hostAddress, clientConfig)
 	if err != nil {
 		return fmt.Errorf("ssh dial: %w", err)
 	}
@@ -560,14 +566,14 @@ func addAuthorizedKey(host, key string, cfg *ssh.ClientConfig) error {
 	defer session.Close()
 
 	// Send key via stdin and run idempotent script on remote host.
-	session.Stdin = strings.NewReader(key + "\n")
-	out, err := session.CombinedOutput(addAuthorizedKeyScript)
+	session.Stdin = strings.NewReader(publicKey + "\n")
+	commandOutput, err := session.CombinedOutput(normalizeLF(addAuthorizedKeyScript))
 	if err != nil {
-		msg := strings.TrimSpace(string(out))
-		if msg == "" {
+		outputMessage := strings.TrimSpace(string(commandOutput))
+		if outputMessage == "" {
 			return err
 		}
-		return fmt.Errorf("%w: %s", err, msg)
+		return fmt.Errorf("%w: %s", err, outputMessage)
 	}
 
 	return nil

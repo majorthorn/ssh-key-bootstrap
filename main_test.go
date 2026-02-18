@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -165,6 +166,27 @@ func TestResolvePublicKeyBothSources(t *testing.T) {
 
 	if _, err := resolvePublicKey("key", "file"); err == nil {
 		t.Fatalf("expected error when both sources provided")
+	}
+}
+
+// TestNormalizeLF ensures CRLF and CR are normalized before remote script execution.
+func TestNormalizeLF(t *testing.T) {
+	t.Parallel()
+
+	raw := "line1\r\nline2\rline3\n"
+	got := normalizeLF(raw)
+	want := "line1\nline2\nline3\n"
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+// TestAddAuthorizedKeyScriptLFOnly guards against carriage returns in remote shell commands.
+func TestAddAuthorizedKeyScriptLFOnly(t *testing.T) {
+	t.Parallel()
+
+	if strings.Contains(normalizeLF(addAuthorizedKeyScript), "\r") {
+		t.Fatalf("remote script contains carriage return")
 	}
 }
 
