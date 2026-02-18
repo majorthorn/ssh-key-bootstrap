@@ -33,8 +33,7 @@ If no config flag is provided, the tool checks for `.env` and `config.json` in t
 
 ## Flags
 
-- `-server` One or more hosts (`host` or `host:port`, comma-separated). Multiple values feed the same list as `-servers` so keeping the shorthand makes it easy to support a single host without thinking which flag to use.
-- `-servers` Comma-separated servers (`host` or `host:port`); it just appends to `-server`.
+- `-server` One or more hosts (`host` or `host:port`, comma-separated). The flag accepts multiple values without requiring you to remember two different names.
 - `-servers-file` File with one server per line (`#` comments and blank lines allowed).
 - `-user` SSH username.
 - `-password` SSH password (less secure than prompt or env var).
@@ -78,11 +77,11 @@ app02.internal:2222
 10.0.2.14
 ```
 
-### Inline Public Key
+### Multiple Hosts Inline
 
 ```bash
 ./vibe-ssh-lift \
-  -servers "host1,host2:2222" \
+  -server "host1,host2:2222" \
   -user deploy \
   -password-env SSH_PASSWORD \
   -pubkey "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..."

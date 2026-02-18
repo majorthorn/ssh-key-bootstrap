@@ -113,8 +113,7 @@ func run() error {
 func parseFlags() *options {
 	programOptions := &options{}
 
-	flag.StringVar(&programOptions.server, "server", "", "Single server (host or host:port)")
-	flag.StringVar(&programOptions.servers, "servers", "", "Comma-separated servers (host or host:port)")
+	flag.StringVar(&programOptions.server, "server", "", "Hosts (host or host:port, comma-separated or repeated)")
 	flag.StringVar(&programOptions.serversFile, "servers-file", "", "File with one server per line")
 
 	flag.StringVar(&programOptions.user, "user", "", "SSH username")
