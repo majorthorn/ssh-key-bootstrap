@@ -1,0 +1,46 @@
+{
+  "name": "vibe-ssh-lift Go",
+  "image": "golang:1.26",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "golangci-lint.vscode-golangci-lint",
+        "eamodio.gitlens"
+      ],
+      "settings": {
+        "go.formatTool": "gofmt",
+        "go.useLanguageServer": true,
+        "go.lintTool": "golangci-lint",
+        "go.autocompleteUnimportedPackages": true,
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "files.watcherExclude": {
+          "**/.devcontainer/**": true,
+          "**/.git/**": true,
+          "**/build/**": true,
+          "**/dist/**": true
+        }
+      }
+    }
+  },
+
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+
+  "mounts": [
+    "source=go-mod-cache,target=/go/pkg/mod,type=volume,consistency=delegated"
+  ],
+
+  "runArgs": [
+    "--security-opt",
+    "no-new-privileges"
+  ],
+
+  "containerEnv": {
+    "GO111MODULE": "on",
+    "GOWORK": "off"
+  },
+
+  "postCreateCommand": "go mod download && go test ./..."
+}
