@@ -29,7 +29,7 @@ go build -o vibe-ssh-lift .
 ```
 
 If required values are missing, the tool prompts interactively.
-If no config flag is provided, the tool also checks for `.env` and `config.json` next to the binary and asks whether to use them.
+If no config flag is provided, the tool checks for `.env` and `config.json` in the same directory as the executable and asks whether to use one.
 
 ## Flags
 
@@ -143,7 +143,12 @@ INSECURE_IGNORE_HOST_KEY=false
 
 Real configs should live outside of Git commits. Keep `configexamples/` full of templates such as the ones above, then copy or rewrite the version you actually use—`config.json` for JSON or `<name>.env` for dotenv—alongside the executable or anywhere else you like. When running `vibe-ssh-lift`, point the tool to them with the matching flags (`-json-file config.json` or `-env-file ./my-prod.env`). Use the examples as a starting point, update the credentials/servers, and add that file to `.gitignore` so it stays private while the template remains tracked.
 
-If both `.env` and `config.json` are present beside the binary (or both flags are set), the tool shows a menu and asks which one to use for that run.
+## Config selection behavior
+
+- If both `.env` and `config.json` are found, the tool shows a menu and asks which one to use for that run.
+- If only one is found, the tool asks whether you want to use it.
+- If both `-env-file` and `-json-file` are set, the tool asks you to choose one and uses only that one.
+- CLI flags still override matching values from the selected config file.
 
 ## Config Review Prompt
 
@@ -155,13 +160,14 @@ When a config file is used, the tool asks you to review values one-by-one before
 
 Sensitive values are masked in the preview (for example, the password only shows a short prefix) so you can validate without exposing full secrets on screen.
 
+This review flow requires an interactive terminal session when a config file is used.
+
 ## Security Notes
 
 - Secure mode is default: host keys are checked against `known_hosts`.
 - Use `-insecure-ignore-host-key` only for temporary testing.
 - Prefer `-password-env` or interactive password prompt over `-password`.
 - Ensure the public key input contains exactly one valid authorized key line.
-- CLI flags still override matching values from the selected config file.
 
 ## Exit Codes
 
