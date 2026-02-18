@@ -89,10 +89,12 @@ func resolveHosts(server, servers, serversFile string, defaultPort int) ([]strin
 		return nil
 	}
 
-	if err := addHost(server); err != nil {
-		return nil, err
+	for _, candidateEntry := range splitServerEntries(server) {
+		if err := addHost(candidateEntry); err != nil {
+			return nil, err
+		}
 	}
-	for _, candidateEntry := range strings.Split(servers, ",") {
+	for _, candidateEntry := range splitServerEntries(servers) {
 		if err := addHost(candidateEntry); err != nil {
 			return nil, err
 		}
@@ -132,6 +134,20 @@ func resolveHosts(server, servers, serversFile string, defaultPort int) ([]strin
 	}
 	sort.Strings(hosts)
 	return hosts, nil
+}
+
+func splitServerEntries(value string) []string {
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	entries := strings.Split(value, ",")
+	result := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if trimmed := strings.TrimSpace(entry); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func normalizeHost(rawHost string, defaultPort int) (string, error) {

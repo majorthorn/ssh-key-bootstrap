@@ -33,8 +33,8 @@ If no config flag is provided, the tool checks for `.env` and `config.json` in t
 
 ## Flags
 
-- `-server` Single server (`host` or `host:port`).
-- `-servers` Comma-separated servers (`host` or `host:port`).
+- `-server` One or more hosts (`host` or `host:port`, comma-separated). Multiple values feed the same list as `-servers` so keeping the shorthand makes it easy to support a single host without thinking which flag to use.
+- `-servers` Comma-separated servers (`host` or `host:port`); it just appends to `-server`.
 - `-servers-file` File with one server per line (`#` comments and blank lines allowed).
 - `-user` SSH username.
 - `-password` SSH password (less secure than prompt or env var).
@@ -142,6 +142,12 @@ INSECURE_IGNORE_HOST_KEY=false
 ## Where to put your configs
 
 Real configs should live outside of Git commits. Keep `configexamples/` full of templates such as the ones above, then copy or rewrite the version you actually use—`config.json` for JSON or `<name>.env` for dotenv—alongside the executable or anywhere else you like. When running `vibe-ssh-lift`, point the tool to them with the matching flags (`-json-file config.json` or `-env-file ./my-prod.env`). Use the examples as a starting point, update the credentials/servers, and add that file to `.gitignore` so it stays private while the template remains tracked.
+
+Config discovery and review happen before any keys are pushed:
+
+- When either `config.json` or `.env` is detected next to the binary (or provided via `-json-file`/`-env-file`), the tool asks which one to use and loads only that source.
+- The selection flow requires an interactive terminal because the tool then asks you to confirm or replace every loaded field before it runs; sensitive fields such as the password are masked (only a short prefix is shown) so you can verify without exposing the secret.
+- CLI flags keep taking priority over config values, making it easy to override a template for a single run.
 
 ## Config selection behavior
 
