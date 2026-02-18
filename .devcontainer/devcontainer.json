@@ -7,7 +7,6 @@
       "extensions": [
         "golang.go",
         "golangci-lint.vscode-golangci-lint",
-        "eamodio.gitlens"
       ],
       "settings": {
         "go.formatTool": "gofmt",
