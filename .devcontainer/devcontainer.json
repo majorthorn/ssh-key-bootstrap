@@ -5,7 +5,7 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        "golang.go",
+        "golang.Go",
         "golangci-lint.vscode-golangci-lint",
         "openai.chatgpt"
       ],
@@ -26,10 +26,10 @@
   },
 
   "workspaceFolder": "/workspace",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
 
   "mounts": [
-    "source=go-mod-cache,target=/go/pkg/mod,type=volume,consistency=delegated"
+    "source=go-mod-cache,target=/go/pkg/mod,type=volume"
   ],
 
   "runArgs": [
@@ -38,7 +38,6 @@
   ],
 
   "containerEnv": {
-    "GO111MODULE": "on",
     "GOWORK": "off"
   },
 
