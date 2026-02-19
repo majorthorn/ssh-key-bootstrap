@@ -1,6 +1,24 @@
 # ssh-key-bootstrap
 
-Add a public SSH key to one or more remote Linux/Unix hosts over SSH.
+Bootstrap SSH key-based access on one or more remote Linux/Unix hosts.
+
+## Why This Exists
+
+Setting up a new computer, onboarding a new server, or rotating to a new SSH key often means repeating the same manual steps on every host: log in, prepare `~/.ssh`, and update `authorized_keys`.
+
+That process is time-consuming and error-prone at scale. This tool exists to make that workflow repeatable, safer, and fast from a single command.
+
+## Why Build This In Go Instead Of Scripts?
+
+Bash and PowerShell scripts can handle the basic workflow with less code. This project was intentionally built in Go to see what a more structured and testable implementation would look like as requirements grew.
+
+While building it, the scope expanded from a simple key push into a more automation-friendly CLI:
+
+- `.env` input support for repeatable runs.
+- Interactive prompts for missing values.
+- Idempotent key installation (no duplicate key lines).
+- Secret references (`PASSWORD_SECRET_REF`) so SSH passwords do not need to be stored in plaintext `.env` files.
+- Provider-based secret resolution (Bitwarden included, more providers can be added).
 
 ## AI Disclaimer
 
