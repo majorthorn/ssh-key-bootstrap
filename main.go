@@ -45,6 +45,12 @@ type statusError struct {
 	err  error
 }
 
+type hostRunRecap struct {
+	ok      int
+	changed int
+	failed  int
+}
+
 func (statusErr *statusError) Error() string {
 	return statusErr.err.Error()
 }
@@ -74,56 +80,65 @@ func run() error {
 		return fail(2, "%w", err)
 	}
 
-	outputPrintln("[INFO] Loading configuration...")
+	outputAnsibleTask("Load configuration")
 	if err := applyConfigFiles(programOptions); err != nil {
 		return fail(2, "%w", err)
 	}
-	outputPrintln("[INFO] Validating options...")
+	outputAnsibleHostStatus("ok", "localhost", "")
+
+	outputAnsibleTask("Validate options")
 	if err := validateOptions(programOptions); err != nil {
 		return fail(2, "%w", err)
 	}
+	outputAnsibleHostStatus("ok", "localhost", "")
 
 	inputReader := bufio.NewReader(os.Stdin)
-	outputPrintln("[INFO] Collecting missing inputs...")
+	outputAnsibleTask("Collect missing inputs")
 	if err := fillMissingInputs(inputReader, programOptions); err != nil {
 		return fail(2, "%w", err)
 	}
+	outputAnsibleHostStatus("ok", "localhost", "")
 
-	outputPrintln("[INFO] Resolving target hosts...")
+	outputAnsibleTask("Resolve target hosts")
 	hosts, err := resolveHosts(programOptions.server, programOptions.servers, programOptions.port)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
-	outputPrintf("[INFO] %d host(s) queued.\n", len(hosts))
+	outputAnsibleHostStatus("ok", "localhost", fmt.Sprintf("%d host(s) queued", len(hosts)))
 
-	outputPrintln("[INFO] Resolving public key...")
+	outputAnsibleTask("Resolve public key")
 	publicKey, err := resolvePublicKey(programOptions.keyInput)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
+	outputAnsibleHostStatus("ok", "localhost", "")
 
-	outputPrintln("[INFO] Building SSH client configuration...")
+	outputAnsibleTask("Build SSH client configuration")
 	clientConfig, err := buildSSHConfig(programOptions)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
+	outputAnsibleHostStatus("ok", "localhost", "")
 
+	outputAnsibleTask("Add authorized key")
 	failures := 0
+	hostRecaps := make(map[string]hostRunRecap, len(hosts))
 	for _, host := range hosts {
-		outputPrintf("[INFO] [%s] Starting...\n", host)
-		if err := addAuthorizedKeyWithStatus(host, publicKey, clientConfig, func(format string, args ...any) {
-			outputPrintf("[INFO] [%s] %s\n", host, fmt.Sprintf(format, args...))
-		}); err != nil {
+		if err := addAuthorizedKeyWithStatus(host, publicKey, clientConfig, nil); err != nil {
 			failures++
-			outputPrintf("[FAIL] %s: %v\n", host, err)
+			hostRecaps[host] = hostRunRecap{failed: 1}
+			outputAnsibleHostStatus("failed", host, err.Error())
 			continue
 		}
-		outputPrintf("[OK]   %s\n", host)
+		hostRecaps[host] = hostRunRecap{ok: 1, changed: 1}
+		outputAnsibleHostStatus("changed", host, "")
 	}
 
+	outputAnsiblePlayRecap(hosts, hostRecaps)
 	if failures > 0 {
 		return fail(1, "%d host(s) failed", failures)
 	}
+
 	return nil
 }
 
