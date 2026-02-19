@@ -40,12 +40,9 @@
   "containerEnv": {
     "GOWORK": "off"
   },
+  "remoteEnv": {
+    "PATH": "/go/bin:${containerEnv:PATH}"
+  },
 
-  "postCreateCommand": [
-    "go install golang.org/x/vuln/cmd/govulncheck@latest",
-    "go install github.com/securego/gosec/v2/cmd/gosec@latest",
-    "go install honnef.co/go/tools/cmd/staticcheck@latest",
-    "go mod download",
-    "go test ./..."
-  ]
+  "postCreateCommand": "bash .devcontainer/post-create.sh"
 }
