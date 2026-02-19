@@ -30,7 +30,7 @@ go build -o vibe-ssh-lift .
 ```
 
 If required values are missing, the tool prompts interactively.
-If no config flag is provided, the tool checks for `.env` and `config.json` in the same directory as the executable and asks whether to use one.
+If no config flag is provided, the tool checks for `.env` in the same directory as the executable and asks whether to use it.
 
 ## Flags
 
@@ -38,7 +38,6 @@ If no config flag is provided, the tool checks for `.env` and `config.json` in t
 - `--hosts-file`, `-f` File with one server per line (`#` comments and blank lines allowed).
 - `--user`, `-u` SSH username.
 - `--key`, `-k` Public key text (`ssh-ed25519 AAAA...`) or path to a public key file.
-- `--json`, `-j` JSON config file path.
 - `--env`, `-d` dotenv config file path.
 - `--skip-review`, `-r` Skip interactive review/edit prompts for config-loaded values.
 - `--port`, `-p` Default SSH port (default: `22`).
@@ -95,27 +94,6 @@ app02.internal:2222
   --known ./known_hosts
 ```
 
-### JSON Config File
-
-```bash
-./vibe-ssh-lift --json configexamples/config.example.json
-```
-
-`configexamples/config.example.json` example:
-
-```json
-{
-  "servers": "app01,app02:2222",
-  "user": "deploy",
-  "password_secret_ref": "bw://replace-with-your-secret-id",
-  "key": "~/.ssh/id_ed25519.pub",
-  "port": 22,
-  "timeout": 10,
-  "known_hosts": "~/.ssh/known_hosts",
-  "insecure_ignore_host_key": false
-}
-```
-
 ### .env Config File
 
 ```bash
@@ -137,17 +115,17 @@ INSECURE_IGNORE_HOST_KEY=false
 
 ## Where to put your configs
 
-Real configs should live outside of Git commits. Keep `configexamples/` full of templates such as the ones above, then copy or rewrite the version you actually use—`config.json` for JSON or `<name>.env` for dotenv—alongside the executable or anywhere else you like. When running `vibe-ssh-lift`, point the tool to them with the matching flags (`--json config.json` or `--env ./my-prod.env`). Use the examples as a starting point, update the credentials/servers, and add that file to `.gitignore` so it stays private while the template remains tracked.
+Real configs should live outside of Git commits. Keep `configexamples/` full of templates such as the one above, then copy or rewrite the version you actually use (`<name>.env`) alongside the executable or anywhere else you like. When running `vibe-ssh-lift`, point the tool to it with `--env ./my-prod.env`. Use the example as a starting point, update the credentials/servers, and add that file to `.gitignore` so it stays private while the template remains tracked.
 
 Config discovery and review happen before any keys are pushed:
 
-- When either `config.json` or `.env` is detected next to the binary (or provided via `--json`/`--env`), the tool asks which one to use and loads only that source.
+- When `.env` is detected next to the binary (or provided via `--env`), the tool can load it before execution.
 - The selection flow requires an interactive terminal because the tool then asks you to confirm or replace every loaded field before it runs; sensitive fields such as the password are masked (only a short prefix is shown) so you can verify without exposing the secret.
 - CLI flags keep taking priority over config values, making it easy to override a template for a single run.
 
 ## Optional Secret References
 
-- Use `PASSWORD_SECRET_REF` (`.env`) or `password_secret_ref` (`config.json`) to avoid storing plaintext SSH passwords.
+- Use `PASSWORD_SECRET_REF` (`.env`) to avoid storing plaintext SSH passwords.
 - Bitwarden references are supported via `bw://...`, `bw:...`, or `bitwarden://...`.
 - The app tries Bitwarden providers in this order:
   1. `bw get secret <id> --raw`
@@ -155,7 +133,7 @@ Config discovery and review happen before any keys are pushed:
 - Secret provider command calls are timeout-bounded to avoid hanging runs.
 - `bws` responses must be valid JSON containing a non-empty `value` field.
 - If a secret reference is provided and cannot be resolved, the run exits with an error.
-- For backward compatibility, `PASSWORD` / `password` still work.
+- For backward compatibility, `PASSWORD` still works.
 
 ## Adding Secret Providers
 
@@ -192,11 +170,10 @@ Provider files can be split by concern for easier maintenance (recommended for n
    - success resolution
    - provider failure paths
 
-## Config selection behavior
+## Config loading behavior
 
-- If both `.env` and `config.json` are found, the tool shows a menu and asks which one to use for that run.
-- If only one is found, the tool asks whether you want to use it.
-- If both `--env` and `--json` are set, the tool asks you to choose one and uses only that one.
+- If `.env` is found next to the binary, the tool asks whether to use it.
+- If `--env` is set, the provided `.env` path is used.
 - CLI flags still override matching values from the selected config file.
 - Use `--skip-review` to bypass the interactive per-field confirmation step (useful for non-interactive runs).
 
@@ -217,7 +194,7 @@ This review flow requires an interactive terminal session when a config file is 
 - Secure mode is default: host keys are checked against `known_hosts`.
 - Unknown hosts are handled interactively (trust prompt + persist on approval), similar to OpenSSH.
 - Use `--insecure` only for temporary testing.
-- Prefer `PASSWORD_SECRET_REF` / `password_secret_ref` over plaintext password values.
+- Prefer `PASSWORD_SECRET_REF` over plaintext password values.
 - Ensure the public key input contains exactly one valid authorized key line.
 
 ## Exit Codes

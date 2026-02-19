@@ -250,7 +250,6 @@ func TestCanonicalFlagName(testContext *testing.T) {
 		"s":          "server",
 		"hosts-file": "servers-file",
 		"k":          "key",
-		"j":          "json-file",
 		"d":          "env-file",
 		"r":          "skip-config-review",
 		"i":          "insecure-ignore-host-key",
@@ -263,70 +262,6 @@ func TestCanonicalFlagName(testContext *testing.T) {
 		if actual != expected {
 			testContext.Fatalf("canonicalFlagName(%q) = %q, want %q", input, actual, expected)
 		}
-	}
-}
-
-// TestApplyJSONConfigFile validates JSON config merge behavior and CLI precedence.
-func TestApplyJSONConfigFile(testContext *testing.T) {
-	testContext.Parallel()
-
-	tempDirectory := testContext.TempDir()
-	jsonConfigPath := filepath.Join(tempDirectory, "config.json")
-	jsonConfigContent := `{
-  "server": "json-host",
-  "servers": "json-a,json-b",
-  "servers_file": "./json-servers.txt",
-  "user": "json-user",
-  "password": "json-password",
-  "password_secret_ref": "bw://ssh-prod-password",
-  "key": "ssh-ed25519 AAAAJSON",
-  "port": 2200,
-  "timeout": 35,
-  "insecure_ignore_host_key": true,
-  "known_hosts": "~/.ssh/json_known_hosts"
-}`
-	if writeErr := os.WriteFile(jsonConfigPath, []byte(jsonConfigContent), 0o600); writeErr != nil {
-		testContext.Fatalf("write json config: %v", writeErr)
-	}
-
-	programOptions := &options{
-		jsonFile:   jsonConfigPath,
-		user:       "cli-user",
-		port:       2222,
-		timeoutSec: defaultTimeoutSeconds,
-	}
-	providedFlagNames := map[string]bool{
-		"user": true,
-		"port": true,
-	}
-
-	if applyErr := applyJSONConfigFile(programOptions, providedFlagNames); applyErr != nil {
-		testContext.Fatalf("apply json config: %v", applyErr)
-	}
-
-	if programOptions.user != "cli-user" {
-		testContext.Fatalf("user overwritten by json config")
-	}
-	if programOptions.port != 2222 {
-		testContext.Fatalf("port overwritten by json config")
-	}
-	if programOptions.server != "json-host" {
-		testContext.Fatalf("server not loaded from json config")
-	}
-	if programOptions.password != "json-password" {
-		testContext.Fatalf("password not loaded from json config")
-	}
-	if programOptions.passwordSecretRef != "bw://ssh-prod-password" {
-		testContext.Fatalf("password secret ref not loaded from json config")
-	}
-	if programOptions.keyInput != "ssh-ed25519 AAAAJSON" {
-		testContext.Fatalf("key input not loaded from json config")
-	}
-	if programOptions.timeoutSec != 35 {
-		testContext.Fatalf("timeout not loaded from json config")
-	}
-	if !programOptions.insecureIgnoreHostKey {
-		testContext.Fatalf("insecure flag not loaded from json config")
 	}
 }
 
@@ -394,18 +329,11 @@ KNOWN_HOSTS=~/.ssh/env_known_hosts
 	}
 }
 
-// TestApplyConfigFiles ensures both active config sources require interactive selection.
+// TestApplyConfigFilesRequiresInteractiveReviewByDefault ensures explicit .env loading still requires terminal review.
 func TestApplyConfigFiles(testContext *testing.T) {
 	testContext.Parallel()
 
 	tempDirectory := testContext.TempDir()
-
-	jsonConfigPath := filepath.Join(tempDirectory, "config.json")
-	jsonConfigContent := `{"user":"json-user","password":"json-password","server":"json-host"}`
-	if writeErr := os.WriteFile(jsonConfigPath, []byte(jsonConfigContent), 0o600); writeErr != nil {
-		testContext.Fatalf("write json config: %v", writeErr)
-	}
-
 	dotEnvPath := filepath.Join(tempDirectory, ".env")
 	dotEnvContent := "USER=env-user\nPASSWORD=env-password\nSERVER=env-host\n"
 	if writeErr := os.WriteFile(dotEnvPath, []byte(dotEnvContent), 0o600); writeErr != nil {
@@ -413,13 +341,12 @@ func TestApplyConfigFiles(testContext *testing.T) {
 	}
 
 	programOptions := &options{
-		jsonFile: jsonConfigPath,
-		envFile:  dotEnvPath,
+		envFile: dotEnvPath,
 	}
 
 	applyErr := applyConfigFiles(programOptions, map[string]bool{})
 	if applyErr == nil {
-		testContext.Fatalf("expected selection error when both config sources are active without an interactive terminal")
+		testContext.Fatalf("expected interactive review error when loading config in a non-interactive terminal")
 	}
 }
 

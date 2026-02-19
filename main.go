@@ -15,7 +15,6 @@ const (
 	defaultTimeoutSeconds       = 10
 	defaultKnownHostsPath       = "~/.ssh/known_hosts"
 	defaultBinaryDotEnvFilename = ".env"
-	defaultBinaryJSONConfigFile = "config.json"
 )
 
 const addAuthorizedKeyScript = "set -eu\n" +
@@ -35,7 +34,6 @@ type options struct {
 	password              string
 	passwordSecretRef     string
 	keyInput              string
-	jsonFile              string
 	envFile               string
 	port                  int
 	timeoutSec            int
@@ -140,7 +138,6 @@ func parseFlags() *options {
 		fmt.Fprintln(output, "  --key, -k <value>          Public key text or public key file path")
 		fmt.Fprintln(output)
 		fmt.Fprintln(output, "Config:")
-		fmt.Fprintln(output, "  --json, -j <path>          JSON config file")
 		fmt.Fprintln(output, "  --env, -d <path>           .env config file")
 		fmt.Fprintln(output, "  --skip-review, -r          Skip interactive config review")
 		fmt.Fprintln(output)
@@ -164,8 +161,6 @@ func parseFlags() *options {
 
 	flag.StringVar(&programOptions.keyInput, "key", "", "Public key text or public key file path")
 	flag.StringVar(&programOptions.keyInput, "k", "", "Short for --key")
-	flag.StringVar(&programOptions.jsonFile, "json", "", "Path to JSON config file")
-	flag.StringVar(&programOptions.jsonFile, "j", "", "Short for --json")
 	flag.StringVar(&programOptions.envFile, "env", "", "Path to .env config file")
 	flag.StringVar(&programOptions.envFile, "d", "", "Short for --env")
 	flag.BoolVar(&programOptions.skipConfigReview, "skip-review", false, "Skip config review prompts")
@@ -204,8 +199,6 @@ func canonicalFlagName(flagName string) string {
 		"u":           "user",
 		"key":         "key",
 		"k":           "key",
-		"json":        "json-file",
-		"j":           "json-file",
 		"env":         "env-file",
 		"d":           "env-file",
 		"skip-review": "skip-config-review",
