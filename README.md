@@ -98,7 +98,7 @@ Config discovery and review happen before any keys are pushed:
 
 Secret resolution is provider-based and extensible.
 
-1. Implement the provider interface in `secrets/providers/<name>/provider_<name>.go` (for example `secrets/providers/aws/provider_aws.go`):
+1. Implement the provider interface in `providers/<name>/provider_<name>.go` (for example `providers/aws/provider_aws.go`):
 
 ```go
 type Provider interface {
@@ -108,14 +108,14 @@ type Provider interface {
 }
 ```
 
-2. Register the provider from its package using `init()` + `secrets.RegisterProvider(...)`.
-3. Add a blank import in `secrets/providers/all/all.go` so the provider package is linked into the binary.
+2. Register the provider from its package using `init()` + `providers.RegisterProvider(...)`.
+3. Add a blank import in `providers/all/all.go` so the provider package is linked into the binary.
 
 Provider files can be split by concern for easier maintenance (recommended for non-trivial providers):
 - `provider_<name>.go` (type + `Supports` + `Resolve` entrypoint)
 - `provider_<name>_parse.go` (ref parsing/validation)
 - `provider_<name>_cli.go` or `provider_<name>_sdk.go` (integration logic)
-  Put these files under `secrets/providers/<name>/`.
+  Put these files under `providers/<name>/`.
 
 4. Define a stable ref scheme for your provider so `Supports(ref)` can route correctly, for example:
    - `aws-sm://...`
@@ -124,7 +124,7 @@ Provider files can be split by concern for easier maintenance (recommended for n
 
 5. Return clear errors from `Resolve` (missing auth, missing secret, invalid ref, etc.) so failures are actionable.
 
-6. Add tests in `secrets/resolver_test.go` and provider-specific tests such as `secrets/providers/<name>/provider_<name>_test.go` for:
+6. Add tests in `providers/resolver_test.go` and provider-specific tests such as `providers/<name>/provider_<name>_test.go` for:
    - supported vs unsupported refs
    - success resolution
    - provider failure paths

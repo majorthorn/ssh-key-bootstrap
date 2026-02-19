@@ -3,13 +3,13 @@ package bitwarden
 import (
 	"strings"
 
-	"vibe-ssh-lift/secrets"
+	"vibe-ssh-lift/providers"
 )
 
 type provider struct{}
 
 func init() {
-	secrets.RegisterProvider(provider{})
+	providers.RegisterProvider(provider{})
 }
 
 func (provider) Name() string {

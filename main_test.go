@@ -12,7 +12,7 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/ssh"
-	"vibe-ssh-lift/secrets"
+	"vibe-ssh-lift/providers"
 )
 
 // TestNormalizeHost verifies ports/default handling across host inputs.
@@ -69,7 +69,7 @@ func TestResolveHostsNoInput(testContext *testing.T) {
 func TestDefaultSecretProvidersRegistered(testContext *testing.T) {
 	testContext.Parallel()
 
-	if len(secrets.DefaultProviders()) == 0 {
+	if len(providers.DefaultProviders()) == 0 {
 		testContext.Fatalf("expected at least one registered default secret provider")
 	}
 }

@@ -8,11 +8,11 @@ import (
 	"os"
 	"strings"
 
-	"vibe-ssh-lift/secrets"
+	"vibe-ssh-lift/providers"
 )
 
 var resolvePasswordFromSecretRef = func(secretRef string) (string, error) {
-	return secrets.ResolveSecretReference(secretRef, secrets.DefaultProviders())
+	return providers.ResolveSecretReference(secretRef, providers.DefaultProviders())
 }
 
 func validateOptions(programOptions *options) error {

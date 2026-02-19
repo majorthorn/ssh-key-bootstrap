@@ -1,5 +1,5 @@
 package main
 
 import (
-	_ "vibe-ssh-lift/secrets/providers/all"
+	_ "vibe-ssh-lift/providers/all"
 )
