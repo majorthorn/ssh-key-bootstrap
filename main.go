@@ -50,13 +50,20 @@ func (statusErr *statusError) Error() string {
 }
 
 func main() {
+	closeRunLog, setupErr := setupRunLogFile(appName)
+	if setupErr != nil {
+		errorPrintln("Warning: could not initialize run log:", setupErr)
+	} else {
+		defer closeRunLog()
+	}
+
 	if err := run(); err != nil {
 		var statusErr *statusError
 		if errors.As(err, &statusErr) {
-			fmt.Fprintln(os.Stderr, "Error:", statusErr.err)
+			errorPrintln("Error:", statusErr.err)
 			os.Exit(statusErr.code)
 		}
-		fmt.Fprintln(os.Stderr, "Error:", err)
+		errorPrintln("Error:", err)
 		os.Exit(2)
 	}
 }
@@ -67,35 +74,35 @@ func run() error {
 		return fail(2, "%w", err)
 	}
 
-	fmt.Println("[INFO] Loading configuration...")
+	outputPrintln("[INFO] Loading configuration...")
 	if err := applyConfigFiles(programOptions); err != nil {
 		return fail(2, "%w", err)
 	}
-	fmt.Println("[INFO] Validating options...")
+	outputPrintln("[INFO] Validating options...")
 	if err := validateOptions(programOptions); err != nil {
 		return fail(2, "%w", err)
 	}
 
 	inputReader := bufio.NewReader(os.Stdin)
-	fmt.Println("[INFO] Collecting missing inputs...")
+	outputPrintln("[INFO] Collecting missing inputs...")
 	if err := fillMissingInputs(inputReader, programOptions); err != nil {
 		return fail(2, "%w", err)
 	}
 
-	fmt.Println("[INFO] Resolving target hosts...")
+	outputPrintln("[INFO] Resolving target hosts...")
 	hosts, err := resolveHosts(programOptions.server, programOptions.servers, programOptions.port)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
-	fmt.Printf("[INFO] %d host(s) queued.\n", len(hosts))
+	outputPrintf("[INFO] %d host(s) queued.\n", len(hosts))
 
-	fmt.Println("[INFO] Resolving public key...")
+	outputPrintln("[INFO] Resolving public key...")
 	publicKey, err := resolvePublicKey(programOptions.keyInput)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
 
-	fmt.Println("[INFO] Building SSH client configuration...")
+	outputPrintln("[INFO] Building SSH client configuration...")
 	clientConfig, err := buildSSHConfig(programOptions)
 	if err != nil {
 		return fail(2, "%w", err)
@@ -103,15 +110,15 @@ func run() error {
 
 	failures := 0
 	for _, host := range hosts {
-		fmt.Printf("[INFO] [%s] Starting...\n", host)
+		outputPrintf("[INFO] [%s] Starting...\n", host)
 		if err := addAuthorizedKeyWithStatus(host, publicKey, clientConfig, func(format string, args ...any) {
-			fmt.Printf("[INFO] [%s] %s\n", host, fmt.Sprintf(format, args...))
+			outputPrintf("[INFO] [%s] %s\n", host, fmt.Sprintf(format, args...))
 		}); err != nil {
 			failures++
-			fmt.Printf("[FAIL] %s: %v\n", host, err)
+			outputPrintf("[FAIL] %s: %v\n", host, err)
 			continue
 		}
-		fmt.Printf("[OK]   %s\n", host)
+		outputPrintf("[OK]   %s\n", host)
 	}
 
 	if failures > 0 {
@@ -127,6 +134,7 @@ func parseFlags() (*options, error) {
 		knownHosts: defaultKnownHostsPath,
 	}
 	normalizeHelpArg()
+	flag.CommandLine.SetOutput(commandOutputWriter())
 
 	flag.Usage = func() {
 		output := flag.CommandLine.Output()

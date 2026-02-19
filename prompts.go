@@ -79,18 +79,18 @@ func promptRequired(reader *bufio.Reader, label string) (string, error) {
 		if value != "" {
 			return value, nil
 		}
-		fmt.Println("Value is required.")
+		outputPrintln("Value is required.")
 	}
 }
 
 func promptPassword(reader *bufio.Reader, label string) (string, error) {
 	for {
-		fmt.Print(label)
+		outputPrint(label)
 
 		var passwordInput string
 		if isTerminal(os.Stdin) {
 			passwordBytes, err := readPassword(os.Stdin)
-			fmt.Println()
+			outputPrintln()
 			if err != nil {
 				return "", err
 			}
@@ -106,6 +106,6 @@ func promptPassword(reader *bufio.Reader, label string) (string, error) {
 		if passwordInput != "" {
 			return passwordInput, nil
 		}
-		fmt.Println("Value is required.")
+		outputPrintln("Value is required.")
 	}
 }

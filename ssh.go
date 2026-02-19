@@ -106,8 +106,8 @@ func promptTrustUnknownHost(hostname, knownHostsPath string, key ssh.PublicKey) 
 		return false, fmt.Errorf("unknown host %s and no interactive terminal available to confirm trust", hostname)
 	}
 
-	fmt.Printf("The authenticity of host %q can't be established.\n", hostname)
-	fmt.Printf("%s key fingerprint is %s.\n", key.Type(), ssh.FingerprintSHA256(key))
+	outputPrintf("The authenticity of host %q can't be established.\n", hostname)
+	outputPrintf("%s key fingerprint is %s.\n", key.Type(), ssh.FingerprintSHA256(key))
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
@@ -122,7 +122,7 @@ func promptTrustUnknownHost(hostname, knownHostsPath string, key ssh.PublicKey) 
 		case "no", "n":
 			return false, nil
 		default:
-			fmt.Println(`Please answer "yes" or "no".`)
+			outputPrintln(`Please answer "yes" or "no".`)
 		}
 	}
 }

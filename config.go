@@ -24,7 +24,9 @@ func applyConfigFiles(programOptions *options) error {
 	if err != nil {
 		return err
 	}
-	confirmLoadedConfigFields(programOptions, loadedFieldNames)
+	if isInteractiveSession() {
+		confirmLoadedConfigFields(programOptions, loadedFieldNames)
+	}
 	return nil
 }
 
@@ -81,7 +83,7 @@ func promptUseSingleConfigSource(inputReader *bufio.Reader, displayName, sourceP
 		case "n", "no":
 			return false, nil
 		}
-		fmt.Println("Please answer with y or n.")
+		outputPrintln("Please answer with y or n.")
 	}
 }
 

@@ -12,13 +12,60 @@ import (
 	"golang.org/x/term"
 )
 
+var standardOutputWriter io.Writer = os.Stdout
+var standardErrorWriter io.Writer = os.Stderr
+
 func promptLine(reader *bufio.Reader, label string) (string, error) {
-	fmt.Print(label)
+	outputPrint(label)
 	line, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
 	return strings.TrimSpace(line), nil
+}
+
+func outputPrint(arguments ...any) {
+	_, _ = fmt.Fprint(standardOutputWriter, arguments...)
+}
+
+func outputPrintf(format string, arguments ...any) {
+	_, _ = fmt.Fprintf(standardOutputWriter, format, arguments...)
+}
+
+func outputPrintln(arguments ...any) {
+	_, _ = fmt.Fprintln(standardOutputWriter, arguments...)
+}
+
+func errorPrintln(arguments ...any) {
+	_, _ = fmt.Fprintln(standardErrorWriter, arguments...)
+}
+
+func commandOutputWriter() io.Writer {
+	return standardErrorWriter
+}
+
+func setupRunLogFile(applicationName string) (func(), error) {
+	executablePath, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("resolve executable path for run log: %w", err)
+	}
+
+	logDirectory := filepath.Dir(executablePath)
+	logPath := filepath.Join(logDirectory, applicationName+".log")
+	logFileHandle, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) // #nosec G304 -- log path is fixed to binary directory
+	if err != nil {
+		return nil, fmt.Errorf("open run log %q: %w", logPath, err)
+	}
+
+	standardOutputWriter = io.MultiWriter(os.Stdout, logFileHandle)
+	standardErrorWriter = io.MultiWriter(os.Stderr, logFileHandle)
+
+	cleanupRunLog := func() {
+		standardOutputWriter = os.Stdout
+		standardErrorWriter = os.Stderr
+		_ = logFileHandle.Close()
+	}
+	return cleanupRunLog, nil
 }
 
 func expandHomePath(path string) (string, error) {

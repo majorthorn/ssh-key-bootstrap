@@ -17,12 +17,12 @@ func confirmLoadedConfigFields(programOptions *options, loadedFieldNames map[str
 		return
 	}
 
-	fmt.Println("Loaded configuration values:")
+	outputPrintln("Loaded configuration values:")
 	for _, field := range configFields() {
 		if !loadedFieldNames[field.key] {
 			continue
 		}
-		fmt.Printf("%s: %s\n", field.label, previewFieldValue(field, programOptions))
+		outputPrintf("%s: %s\n", field.label, previewFieldValue(field, programOptions))
 	}
 }
 
