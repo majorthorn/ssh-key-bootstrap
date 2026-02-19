@@ -7,11 +7,6 @@ import (
 	"strings"
 )
 
-func applyDotEnvConfigFile(programOptions *options) error {
-	_, err := applyDotEnvConfigFileWithMetadata(programOptions)
-	return err
-}
-
 func applyDotEnvConfigFileWithMetadata(programOptions *options) (map[string]bool, error) {
 	loadedFieldNames := map[string]bool{}
 	if strings.TrimSpace(programOptions.envFile) == "" {

@@ -257,7 +257,7 @@ KNOWN_HOSTS=~/.ssh/env_known_hosts
 		insecureIgnoreHostKey: false,
 	}
 
-	if applyErr := applyDotEnvConfigFile(programOptions); applyErr != nil {
+	if _, applyErr := applyDotEnvConfigFileWithMetadata(programOptions); applyErr != nil {
 		testContext.Fatalf("apply .env config: %v", applyErr)
 	}
 
@@ -329,7 +329,7 @@ func TestApplyDotEnvConfigFileInvalidPort(testContext *testing.T) {
 	}
 
 	programOptions := &options{envFile: dotEnvPath}
-	applyErr := applyDotEnvConfigFile(programOptions)
+	_, applyErr := applyDotEnvConfigFileWithMetadata(programOptions)
 	if applyErr == nil {
 		testContext.Fatalf("expected invalid PORT error")
 	}

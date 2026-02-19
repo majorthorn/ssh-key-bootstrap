@@ -16,6 +16,8 @@ Add a public SSH key to one or more remote Linux/Unix hosts over SSH.
 - Adds the key only if it is not already present.
 - Verifies host keys with `known_hosts` by default (secure mode).
 - For unknown hosts, prompts you to trust the presented key and stores it in `known_hosts` when accepted.
+- Prints Ansible-style task/status output with a final play recap.
+- Writes a run log to `vibe-ssh-lift.log` in the same directory as the executable.
 
 ## Build
 
@@ -36,6 +38,12 @@ If `--env` is not provided, the tool checks for `.env` in the same directory as 
 
 - `--env` dotenv config file path.
 - `--help` Show help.
+
+## Output and Logs
+
+- Runtime output follows an Ansible-style format: `TASK [...]`, per-host `ok/changed/failed`, then `PLAY RECAP`.
+- Output is written to console and appended to `vibe-ssh-lift.log` next to the executable.
+- Log file lines are prefixed with UTC ISO-8601 timestamps.
 
 ## Examples
 
@@ -71,7 +79,8 @@ Real configs should live outside of Git commits. Keep `configexamples/` full of 
 Config discovery and review happen before any keys are pushed:
 
 - When `.env` is detected next to the binary (or provided via `--env`), the tool can load it before execution.
-- Loaded config values are printed before execution; sensitive fields such as the password are masked (only a short prefix is shown).
+- In interactive runs, loaded config values are printed before execution; sensitive fields such as the password are masked (only a short prefix is shown).
+- In non-interactive runs, config preview output is skipped.
 
 ## Optional Secret References
 
@@ -127,7 +136,7 @@ Provider files can be split by concern for easier maintenance (recommended for n
 
 ## Config Review Prompt
 
-When a config file is used, the tool prints loaded values before continuing. Sensitive values are masked in the preview (for example, the password only shows a short prefix) so you can validate without exposing full secrets on screen.
+When a config file is used in an interactive session, the tool prints loaded values before continuing. Sensitive values are masked in the preview (for example, the password only shows a short prefix) so you can validate without exposing full secrets on screen. In non-interactive runs, this preview is skipped.
 
 ## Security Notes
 

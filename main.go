@@ -15,6 +15,7 @@ const (
 	defaultTimeoutSeconds       = 10
 	defaultKnownHostsPath       = "~/.ssh/known_hosts"
 	defaultBinaryDotEnvFilename = ".env"
+	ansibleTaskPaddingWidth     = 69
 )
 
 const addAuthorizedKeyScript = "set -eu\n" +
@@ -179,4 +180,30 @@ func normalizeHelpArg() {
 
 func fail(code int, format string, args ...any) error {
 	return &statusError{code: code, err: fmt.Errorf(format, args...)}
+}
+
+func outputAnsibleTask(taskName string) {
+	paddingLength := ansibleTaskPaddingWidth - len(taskName)
+	if paddingLength < 5 {
+		paddingLength = 5
+	}
+	outputPrintf("\nTASK [%s] %s\n", taskName, strings.Repeat("*", paddingLength))
+}
+
+func outputAnsibleHostStatus(status, hostName, message string) {
+	trimmedMessage := strings.TrimSpace(message)
+	if trimmedMessage == "" {
+		outputPrintf("%s: [%s]\n", status, hostName)
+		return
+	}
+	outputPrintf("%s: [%s] => %s\n", status, hostName, trimmedMessage)
+}
+
+func outputAnsiblePlayRecap(hosts []string, hostRecaps map[string]hostRunRecap) {
+	outputPrintln()
+	outputPrintln("PLAY RECAP *********************************************************************")
+	for _, hostName := range hosts {
+		recap := hostRecaps[hostName]
+		outputPrintf("%-24s : ok=%d changed=%d unreachable=0 failed=%d\n", hostName, recap.ok, recap.changed, recap.failed)
+	}
 }

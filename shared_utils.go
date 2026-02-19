@@ -2,12 +2,15 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"golang.org/x/term"
 )
@@ -15,7 +18,65 @@ import (
 var standardOutputWriter io.Writer = os.Stdout
 var standardErrorWriter io.Writer = os.Stderr
 
-const ansibleTaskPaddingWidth = 69
+type timestampedLineWriter struct {
+	mu      sync.Mutex
+	writer  io.Writer
+	pending []byte
+	nowFunc func() time.Time
+}
+
+func newTimestampedLineWriter(writer io.Writer) *timestampedLineWriter {
+	return &timestampedLineWriter{
+		writer:  writer,
+		nowFunc: time.Now,
+	}
+}
+
+func (timestampWriter *timestampedLineWriter) Write(data []byte) (int, error) {
+	timestampWriter.mu.Lock()
+	defer timestampWriter.mu.Unlock()
+
+	timestampWriter.pending = append(timestampWriter.pending, data...)
+	for {
+		lineEndIndex := bytes.IndexByte(timestampWriter.pending, '\n')
+		if lineEndIndex < 0 {
+			break
+		}
+		lineBytes := timestampWriter.pending[:lineEndIndex]
+		if err := timestampWriter.writeLineLocked(lineBytes, true); err != nil {
+			return 0, err
+		}
+		timestampWriter.pending = timestampWriter.pending[lineEndIndex+1:]
+	}
+	return len(data), nil
+}
+
+func (timestampWriter *timestampedLineWriter) Close() error {
+	timestampWriter.mu.Lock()
+	defer timestampWriter.mu.Unlock()
+
+	if len(timestampWriter.pending) == 0 {
+		return nil
+	}
+	if err := timestampWriter.writeLineLocked(timestampWriter.pending, false); err != nil {
+		return err
+	}
+	timestampWriter.pending = nil
+	return nil
+}
+
+func (timestampWriter *timestampedLineWriter) writeLineLocked(line []byte, appendNewline bool) error {
+	timestampPrefix := timestampWriter.nowFunc().UTC().Format(time.RFC3339)
+	if _, err := fmt.Fprintf(timestampWriter.writer, "[%s] %s", timestampPrefix, string(line)); err != nil {
+		return err
+	}
+	if appendNewline {
+		if _, err := timestampWriter.writer.Write([]byte("\n")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func promptLine(reader *bufio.Reader, label string) (string, error) {
 	outputPrint(label)
@@ -46,32 +107,6 @@ func commandOutputWriter() io.Writer {
 	return standardErrorWriter
 }
 
-func outputAnsibleTask(taskName string) {
-	paddingLength := ansibleTaskPaddingWidth - len(taskName)
-	if paddingLength < 5 {
-		paddingLength = 5
-	}
-	outputPrintf("\nTASK [%s] %s\n", taskName, strings.Repeat("*", paddingLength))
-}
-
-func outputAnsibleHostStatus(status, hostName, message string) {
-	trimmedMessage := strings.TrimSpace(message)
-	if trimmedMessage == "" {
-		outputPrintf("%s: [%s]\n", status, hostName)
-		return
-	}
-	outputPrintf("%s: [%s] => %s\n", status, hostName, trimmedMessage)
-}
-
-func outputAnsiblePlayRecap(hosts []string, hostRecaps map[string]hostRunRecap) {
-	outputPrintln()
-	outputPrintln("PLAY RECAP *********************************************************************")
-	for _, hostName := range hosts {
-		recap := hostRecaps[hostName]
-		outputPrintf("%-24s : ok=%d changed=%d unreachable=0 failed=%d\n", hostName, recap.ok, recap.changed, recap.failed)
-	}
-}
-
 func setupRunLogFile(applicationName string) (func(), error) {
 	executablePath, err := os.Executable()
 	if err != nil {
@@ -84,13 +119,15 @@ func setupRunLogFile(applicationName string) (func(), error) {
 	if err != nil {
 		return nil, fmt.Errorf("open run log %q: %w", logPath, err)
 	}
+	timestampedLogWriter := newTimestampedLineWriter(logFileHandle)
 
-	standardOutputWriter = io.MultiWriter(os.Stdout, logFileHandle)
-	standardErrorWriter = io.MultiWriter(os.Stderr, logFileHandle)
+	standardOutputWriter = io.MultiWriter(os.Stdout, timestampedLogWriter)
+	standardErrorWriter = io.MultiWriter(os.Stderr, timestampedLogWriter)
 
 	cleanupRunLog := func() {
 		standardOutputWriter = os.Stdout
 		standardErrorWriter = os.Stderr
+		_ = timestampedLogWriter.Close()
 		_ = logFileHandle.Close()
 	}
 	return cleanupRunLog, nil
