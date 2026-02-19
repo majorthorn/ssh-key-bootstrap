@@ -11,23 +11,23 @@ func terminalFD(file *os.File) (int, bool) {
 	if file == nil {
 		return 0, false
 	}
-	maxInt := int(^uint(0) >> 1)
-	fd := file.Fd()
-	if fd > uintptr(maxInt) {
+	maxIntValue := int(^uint(0) >> 1)
+	fileDescriptor := file.Fd()
+	if fileDescriptor > uintptr(maxIntValue) {
 		return 0, false
 	}
-	return int(fd), true // #nosec G115 -- os.File descriptors fit into int on supported platforms
+	return int(fileDescriptor), true // #nosec G115 -- os.File descriptors fit into int on supported platforms
 }
 
 func isTerminal(file *os.File) bool {
-	fd, ok := terminalFD(file)
-	return ok && term.IsTerminal(fd)
+	terminalFileDescriptor, ok := terminalFD(file)
+	return ok && term.IsTerminal(terminalFileDescriptor)
 }
 
 func readPassword(file *os.File) ([]byte, error) {
-	fd, ok := terminalFD(file)
+	terminalFileDescriptor, ok := terminalFD(file)
 	if !ok {
 		return nil, errors.New("invalid terminal file descriptor")
 	}
-	return term.ReadPassword(fd)
+	return term.ReadPassword(terminalFileDescriptor)
 }

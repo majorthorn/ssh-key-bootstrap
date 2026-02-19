@@ -99,12 +99,12 @@ func promptPassword(reader *bufio.Reader, label string) (string, error) {
 
 		var passwordInput string
 		if isTerminal(os.Stdin) {
-			bytes, err := readPassword(os.Stdin)
+			passwordBytes, err := readPassword(os.Stdin)
 			fmt.Println()
 			if err != nil {
 				return "", err
 			}
-			passwordInput = strings.TrimSpace(string(bytes))
+			passwordInput = strings.TrimSpace(string(passwordBytes))
 		} else {
 			line, err := reader.ReadString('\n')
 			if err != nil && !errors.Is(err, io.EOF) {
@@ -123,12 +123,12 @@ func promptPassword(reader *bufio.Reader, label string) (string, error) {
 func promptPasswordAllowEmpty(reader *bufio.Reader, label string) (string, error) {
 	fmt.Print(label)
 	if isTerminal(os.Stdin) {
-		bytes, err := readPassword(os.Stdin)
+		passwordBytes, err := readPassword(os.Stdin)
 		fmt.Println()
 		if err != nil {
 			return "", err
 		}
-		return string(bytes), nil
+		return string(passwordBytes), nil
 	}
 
 	line, err := reader.ReadString('\n')
