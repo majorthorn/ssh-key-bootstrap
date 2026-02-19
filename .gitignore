@@ -35,6 +35,7 @@ _build/
 *.egg-info/
 pip-wheel-metadata/
 .gocache/
+.gotmp/
 *.bak
 *.tmp
 *.swp
