@@ -1,9 +1,11 @@
-package main
+package config
 
 import (
 	"bufio"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -86,4 +88,27 @@ func parseDotEnvValue(rawValue string) (string, error) {
 		rawValue = rawValue[:inlineCommentIndex]
 	}
 	return strings.TrimSpace(rawValue), nil
+}
+
+func normalizeLF(value string) string {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	return strings.ReplaceAll(value, "\r", "\n")
+}
+
+func expandHomePath(path string) (string, error) {
+	if path == "" {
+		return "", errors.New("path is empty")
+	}
+	if path != "~" && !strings.HasPrefix(path, "~/") && !strings.HasPrefix(path, `~\`) {
+		return path, nil
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	if path == "~" {
+		return home, nil
+	}
+	return filepath.Join(home, path[2:]), nil
 }

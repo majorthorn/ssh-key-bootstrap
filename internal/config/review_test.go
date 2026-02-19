@@ -1,31 +1,38 @@
-package main
+package config
 
 import (
 	"strings"
 	"testing"
 )
 
+type testRuntimeIO struct{}
+
+func (testRuntimeIO) PromptLine(string) (string, error) { return "", nil }
+func (testRuntimeIO) Println(arguments ...any)          {}
+func (testRuntimeIO) Printf(string, ...any)             {}
+func (testRuntimeIO) IsInteractive() bool               { return true }
+
 func TestConfirmLoadedConfigFieldsNoLoadedValues(t *testing.T) {
 	t.Parallel()
 
-	programOptions := &options{}
-	confirmLoadedConfigFields(programOptions, map[string]bool{})
+	programOptions := &Options{}
+	confirmLoadedConfigFields(programOptions, map[string]bool{}, testRuntimeIO{})
 }
 
 func TestConfirmLoadedConfigFieldsLoadedValues(t *testing.T) {
 	t.Parallel()
 
-	programOptions := &options{
-		server:   "app01",
-		port:     22,
-		password: "super-secret",
+	programOptions := &Options{
+		Server:   "app01",
+		Port:     22,
+		Password: "super-secret",
 	}
 
 	confirmLoadedConfigFields(programOptions, map[string]bool{
 		"server":   true,
 		"port":     true,
 		"password": true,
-	})
+	}, testRuntimeIO{})
 }
 
 func TestPreviewHelpers(t *testing.T) {
@@ -44,15 +51,15 @@ func TestPreviewHelpers(t *testing.T) {
 		t.Fatalf("maskSensitiveValue(short) = %q, want %q", got, "a***")
 	}
 
-	programOptions := &options{
-		password: "super-secret",
-		keyInput: strings.Repeat("k", 150),
-		server:   "host01",
+	programOptions := &Options{
+		Password: "super-secret",
+		KeyInput: strings.Repeat("k", 150),
+		Server:   "host01",
 	}
 
 	passwordPreview := previewFieldValue(configField{
 		kind: "password",
-		get:  func(optionsValue *options) string { return optionsValue.password },
+		get:  func(optionsValue *Options) string { return optionsValue.Password },
 	}, programOptions)
 	if !strings.HasSuffix(passwordPreview, "***") {
 		t.Fatalf("password preview not masked: %q", passwordPreview)
@@ -60,7 +67,7 @@ func TestPreviewHelpers(t *testing.T) {
 
 	keyPreview := previewFieldValue(configField{
 		kind: "publickey",
-		get:  func(optionsValue *options) string { return optionsValue.keyInput },
+		get:  func(optionsValue *Options) string { return optionsValue.KeyInput },
 	}, programOptions)
 	if !strings.HasSuffix(keyPreview, "...") {
 		t.Fatalf("public key preview should be truncated: %q", keyPreview)
@@ -68,7 +75,7 @@ func TestPreviewHelpers(t *testing.T) {
 
 	textPreview := previewFieldValue(configField{
 		kind: "text",
-		get:  func(optionsValue *options) string { return optionsValue.server },
+		get:  func(optionsValue *Options) string { return optionsValue.Server },
 	}, programOptions)
 	if textPreview != "host01" {
 		t.Fatalf("text preview = %q, want %q", textPreview, "host01")

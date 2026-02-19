@@ -1,17 +1,23 @@
-package main
+package config
 
 import (
-	"bufio"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-func applyConfigFiles(programOptions *options) error {
-	inputReader := bufio.NewReader(os.Stdin)
+const defaultBinaryDotEnvFilename = ".env"
 
-	selectedDotEnvPath, err := resolveDotEnvSource(programOptions, inputReader)
+type RuntimeIO interface {
+	PromptLine(label string) (string, error)
+	Println(arguments ...any)
+	Printf(format string, arguments ...any)
+	IsInteractive() bool
+}
+
+func ApplyFiles(programOptions *Options, runtimeIO RuntimeIO) error {
+	selectedDotEnvPath, err := resolveDotEnvSource(programOptions, runtimeIO)
 	if err != nil {
 		return err
 	}
@@ -19,23 +25,23 @@ func applyConfigFiles(programOptions *options) error {
 		return nil
 	}
 
-	programOptions.envFile = selectedDotEnvPath
-	loadedFieldNames, err := applyDotEnvConfigFileWithMetadata(programOptions)
+	programOptions.EnvFile = selectedDotEnvPath
+	loadedFieldNames, err := ApplyDotEnvWithMetadata(programOptions)
 	if err != nil {
 		return err
 	}
-	if isInteractiveSession() {
-		confirmLoadedConfigFields(programOptions, loadedFieldNames)
+	if runtimeIO.IsInteractive() {
+		confirmLoadedConfigFields(programOptions, loadedFieldNames, runtimeIO)
 	}
 	return nil
 }
 
-func resolveDotEnvSource(programOptions *options, inputReader *bufio.Reader) (string, error) {
-	explicitDotEnvPath := strings.TrimSpace(programOptions.envFile)
+func resolveDotEnvSource(programOptions *Options, runtimeIO RuntimeIO) (string, error) {
+	explicitDotEnvPath := strings.TrimSpace(programOptions.EnvFile)
 	if explicitDotEnvPath != "" {
 		return explicitDotEnvPath, nil
 	}
-	if !isInteractiveSession() {
+	if !runtimeIO.IsInteractive() {
 		return "", nil
 	}
 
@@ -47,7 +53,7 @@ func resolveDotEnvSource(programOptions *options, inputReader *bufio.Reader) (st
 		return "", nil
 	}
 
-	useDotEnv, err := promptUseSingleConfigSource(inputReader, ".env", discoveredDotEnvPath)
+	useDotEnv, err := promptUseSingleConfigSource(runtimeIO, ".env", discoveredDotEnvPath)
 	if err != nil {
 		return "", err
 	}
@@ -71,9 +77,9 @@ func discoverConfigFileNearBinary() (string, error) {
 	return dotEnvPath, nil
 }
 
-func promptUseSingleConfigSource(inputReader *bufio.Reader, displayName, sourcePath string) (bool, error) {
+func promptUseSingleConfigSource(runtimeIO RuntimeIO, displayName, sourcePath string) (bool, error) {
 	for {
-		answer, err := promptLine(inputReader, fmt.Sprintf("Found %s next to the binary at %q. Use it? [y/n]: ", displayName, sourcePath))
+		answer, err := runtimeIO.PromptLine(fmt.Sprintf("Found %s next to the binary at %q. Use it? [y/n]: ", displayName, sourcePath))
 		if err != nil {
 			return false, err
 		}
@@ -83,12 +89,8 @@ func promptUseSingleConfigSource(inputReader *bufio.Reader, displayName, sourceP
 		case "n", "no":
 			return false, nil
 		}
-		outputPrintln("Please answer with y or n.")
+		runtimeIO.Println("Please answer with y or n.")
 	}
-}
-
-func isInteractiveSession() bool {
-	return isTerminal(os.Stdin) && isTerminal(os.Stdout)
 }
 
 func fileExists(path string) bool {

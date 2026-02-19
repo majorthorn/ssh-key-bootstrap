@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"fmt"
@@ -7,13 +7,13 @@ import (
 	"strings"
 )
 
-func applyDotEnvConfigFileWithMetadata(programOptions *options) (map[string]bool, error) {
+func ApplyDotEnvWithMetadata(programOptions *Options) (map[string]bool, error) {
 	loadedFieldNames := map[string]bool{}
-	if strings.TrimSpace(programOptions.envFile) == "" {
+	if strings.TrimSpace(programOptions.EnvFile) == "" {
 		return loadedFieldNames, nil
 	}
 
-	envFilePath, err := expandHomePath(strings.TrimSpace(programOptions.envFile))
+	envFilePath, err := expandHomePath(strings.TrimSpace(programOptions.EnvFile))
 	if err != nil {
 		return nil, fmt.Errorf("resolve .env path: %w", err)
 	}
@@ -36,20 +36,20 @@ func applyDotEnvConfigFileWithMetadata(programOptions *options) (map[string]bool
 	}
 
 	if serverValue, ok := parsedEnvValues["SERVER"]; ok {
-		_ = setLoaded("server", func() error { programOptions.server = strings.TrimSpace(serverValue); return nil })
+		_ = setLoaded("server", func() error { programOptions.Server = strings.TrimSpace(serverValue); return nil })
 	}
 	if serversValue, ok := parsedEnvValues["SERVERS"]; ok {
-		_ = setLoaded("servers", func() error { programOptions.servers = strings.TrimSpace(serversValue); return nil })
+		_ = setLoaded("servers", func() error { programOptions.Servers = strings.TrimSpace(serversValue); return nil })
 	}
 	if userValue, ok := parsedEnvValues["USER"]; ok {
-		_ = setLoaded("user", func() error { programOptions.user = strings.TrimSpace(userValue); return nil })
+		_ = setLoaded("user", func() error { programOptions.User = strings.TrimSpace(userValue); return nil })
 	}
 	if passwordValue, ok := parsedEnvValues["PASSWORD"]; ok {
-		_ = setLoaded("password", func() error { programOptions.password = passwordValue; return nil })
+		_ = setLoaded("password", func() error { programOptions.Password = passwordValue; return nil })
 	}
 	if passwordSecretRefValue, ok := parsedEnvValues["PASSWORD_SECRET_REF"]; ok {
 		_ = setLoaded("passwordSecretRef", func() error {
-			programOptions.passwordSecretRef = strings.TrimSpace(passwordSecretRefValue)
+			programOptions.PasswordSecretRef = strings.TrimSpace(passwordSecretRefValue)
 			return nil
 		})
 	}
@@ -58,7 +58,7 @@ func applyDotEnvConfigFileWithMetadata(programOptions *options) (map[string]bool
 		return nil, fmt.Errorf(".env must set only one of KEY/PUBKEY/PUBKEY_FILE")
 	}
 	if len(keyInputs) == 1 {
-		_ = setLoaded("keyInput", func() error { programOptions.keyInput = keyInputs[0]; return nil })
+		_ = setLoaded("keyInput", func() error { programOptions.KeyInput = keyInputs[0]; return nil })
 	}
 	if portValue, ok := parsedEnvValues["PORT"]; ok {
 		if err := setLoaded("port", func() error {
@@ -66,7 +66,7 @@ func applyDotEnvConfigFileWithMetadata(programOptions *options) (map[string]bool
 			if conversionErr != nil {
 				return fmt.Errorf(".env key PORT must be an integer: %w", conversionErr)
 			}
-			programOptions.port = portNumber
+			programOptions.Port = portNumber
 			return nil
 		}); err != nil {
 			return nil, err
@@ -78,7 +78,7 @@ func applyDotEnvConfigFileWithMetadata(programOptions *options) (map[string]bool
 			if conversionErr != nil {
 				return fmt.Errorf(".env key TIMEOUT must be an integer: %w", conversionErr)
 			}
-			programOptions.timeoutSec = timeoutSeconds
+			programOptions.TimeoutSec = timeoutSeconds
 			return nil
 		}); err != nil {
 			return nil, err
@@ -90,14 +90,14 @@ func applyDotEnvConfigFileWithMetadata(programOptions *options) (map[string]bool
 			if conversionErr != nil {
 				return fmt.Errorf(".env key INSECURE_IGNORE_HOST_KEY must be a boolean: %w", conversionErr)
 			}
-			programOptions.insecureIgnoreHostKey = insecureMode
+			programOptions.InsecureIgnoreHostKey = insecureMode
 			return nil
 		}); err != nil {
 			return nil, err
 		}
 	}
 	if knownHostsValue, ok := parsedEnvValues["KNOWN_HOSTS"]; ok {
-		_ = setLoaded("knownHosts", func() error { programOptions.knownHosts = strings.TrimSpace(knownHostsValue); return nil })
+		_ = setLoaded("knownHosts", func() error { programOptions.KnownHosts = strings.TrimSpace(knownHostsValue); return nil })
 	}
 
 	return loadedFieldNames, nil

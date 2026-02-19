@@ -10,12 +10,11 @@ import (
 )
 
 const (
-	appName                     = "vibe-ssh-lift"
-	defaultSSHPort              = 22
-	defaultTimeoutSeconds       = 10
-	defaultKnownHostsPath       = "~/.ssh/known_hosts"
-	defaultBinaryDotEnvFilename = ".env"
-	ansibleTaskPaddingWidth     = 69
+	appName                 = "vibe-ssh-lift"
+	defaultSSHPort          = 22
+	defaultTimeoutSeconds   = 10
+	defaultKnownHostsPath   = "~/.ssh/known_hosts"
+	ansibleTaskPaddingWidth = 69
 )
 
 const addAuthorizedKeyScript = "set -eu\n" +
