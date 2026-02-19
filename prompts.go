@@ -9,8 +9,6 @@ import (
 	"strings"
 
 	"vibe-ssh-lift/secrets"
-
-	"golang.org/x/term"
 )
 
 var resolvePasswordFromSecretRef = func(secretRef string) (string, error) {
@@ -100,8 +98,8 @@ func promptPassword(reader *bufio.Reader, label string) (string, error) {
 		fmt.Print(label)
 
 		var passwordInput string
-		if term.IsTerminal(int(os.Stdin.Fd())) {
-			bytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+		if isTerminal(os.Stdin) {
+			bytes, err := readPassword(os.Stdin)
 			fmt.Println()
 			if err != nil {
 				return "", err
@@ -124,8 +122,8 @@ func promptPassword(reader *bufio.Reader, label string) (string, error) {
 
 func promptPasswordAllowEmpty(reader *bufio.Reader, label string) (string, error) {
 	fmt.Print(label)
-	if term.IsTerminal(int(os.Stdin.Fd())) {
-		bytes, err := term.ReadPassword(int(os.Stdin.Fd()))
+	if isTerminal(os.Stdin) {
+		bytes, err := readPassword(os.Stdin)
 		fmt.Println()
 		if err != nil {
 			return "", err

@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-
-	"golang.org/x/term"
 )
 
 type jsonConfigOptions struct {
@@ -19,7 +17,7 @@ type jsonConfigOptions struct {
 	Servers               *string `json:"servers"`
 	ServersFile           *string `json:"servers_file"`
 	User                  *string `json:"user"`
-	Password              *string `json:"password"`
+	Password              *string `json:"password"` // #nosec G117 -- this field maps a user-provided config schema key
 	PasswordSecretRef     *string `json:"password_secret_ref"`
 	Key                   *string `json:"key"`
 	PubKey                *string `json:"pubkey"`
@@ -249,7 +247,7 @@ func promptUseSingleConfigSource(inputReader *bufio.Reader, displayName, sourceP
 }
 
 func isInteractiveSession() bool {
-	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+	return isTerminal(os.Stdin) && isTerminal(os.Stdout)
 }
 
 func fileExists(path string) bool {
@@ -272,7 +270,7 @@ func applyJSONConfigFileWithMetadata(programOptions *options, providedFlagNames 
 	if err != nil {
 		return nil, fmt.Errorf("resolve json config path: %w", err)
 	}
-	jsonBytes, err := os.ReadFile(jsonFilePath)
+	jsonBytes, err := os.ReadFile(jsonFilePath) // #nosec G304 -- json config path is explicit user input
 	if err != nil {
 		return nil, fmt.Errorf("read json config file: %w", err)
 	}
@@ -359,7 +357,7 @@ func applyDotEnvConfigFileWithMetadata(programOptions *options, providedFlagName
 	if err != nil {
 		return nil, fmt.Errorf("resolve .env path: %w", err)
 	}
-	envBytes, err := os.ReadFile(envFilePath)
+	envBytes, err := os.ReadFile(envFilePath) // #nosec G304 -- dotenv path is explicit user input
 	if err != nil {
 		return nil, fmt.Errorf("read .env file: %w", err)
 	}

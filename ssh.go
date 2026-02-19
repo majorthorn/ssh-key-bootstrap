@@ -15,7 +15,6 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
-	"golang.org/x/term"
 )
 
 var confirmUnknownHost = promptTrustUnknownHost
@@ -35,7 +34,7 @@ func buildSSHConfig(programOptions *options) (*ssh.ClientConfig, error) {
 
 func buildHostKeyCallback(insecure bool, knownHostsPath string) (ssh.HostKeyCallback, error) {
 	if insecure {
-		return ssh.InsecureIgnoreHostKey(), nil
+		return ssh.InsecureIgnoreHostKey(), nil // #nosec G106 -- explicitly enabled via --insecure flag
 	}
 
 	path, err := expandHomePath(strings.TrimSpace(knownHostsPath))
@@ -95,7 +94,7 @@ func ensureKnownHostsFile(path string) error {
 		}
 	}
 
-	fileHandle, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0o600)
+	fileHandle, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0o600) // #nosec G304 -- known_hosts path is user-configurable by design
 	if err != nil {
 		return err
 	}
@@ -103,7 +102,7 @@ func ensureKnownHostsFile(path string) error {
 }
 
 func promptTrustUnknownHost(hostname, knownHostsPath string, key ssh.PublicKey) (bool, error) {
-	if !term.IsTerminal(int(os.Stdin.Fd())) {
+	if !isTerminal(os.Stdin) {
 		return false, fmt.Errorf("unknown host %s and no interactive terminal available to confirm trust", hostname)
 	}
 
@@ -134,7 +133,7 @@ func appendKnownHost(path, hostname string, key ssh.PublicKey) error {
 	}
 
 	knownHostLine := knownhosts.Line([]string{knownhosts.Normalize(hostname)}, key)
-	fileHandle, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
+	fileHandle, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600) // #nosec G304 -- known_hosts path is user-configurable by design
 	if err != nil {
 		return err
 	}
@@ -144,10 +143,6 @@ func appendKnownHost(path, hostname string, key ssh.PublicKey) error {
 		return err
 	}
 	return nil
-}
-
-func addAuthorizedKey(hostAddress, publicKey string, clientConfig *ssh.ClientConfig) error {
-	return addAuthorizedKeyWithStatus(hostAddress, publicKey, clientConfig, nil)
 }
 
 func addAuthorizedKeyWithStatus(hostAddress, publicKey string, clientConfig *ssh.ClientConfig, logf func(format string, args ...any)) error {
@@ -215,7 +210,7 @@ func resolveHosts(server, servers, serversFile string, defaultPort int) ([]strin
 	}
 
 	if strings.TrimSpace(serversFile) != "" {
-		serversFileHandle, err := os.Open(serversFile)
+		serversFileHandle, err := os.Open(serversFile) // #nosec G304 -- servers file path comes from CLI/config input
 		if err != nil {
 			return nil, fmt.Errorf("open servers file: %w", err)
 		}
@@ -302,7 +297,7 @@ func resolvePublicKey(keyInput string) (string, error) {
 	if pathErr != nil {
 		path = trimmedInput
 	}
-	fileBytes, readErr := os.ReadFile(path)
+	fileBytes, readErr := os.ReadFile(path) // #nosec G304 -- key file path comes from CLI/config input
 	if readErr != nil {
 		return "", fmt.Errorf("invalid --key value: expected a public key or readable file path %q: %w", trimmedInput, readErr)
 	}

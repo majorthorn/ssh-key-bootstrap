@@ -13,7 +13,7 @@ import (
 const secretCommandTimeout = 10 * time.Second
 
 func resolveWithBW(secretID string) (string, error) {
-	commandOutput, err := runSecretCommand("bw", "get", "secret", secretID, "--raw")
+	commandOutput, err := runBWSecretCommand(secretID)
 	if err != nil {
 		return "", err
 	}
@@ -25,7 +25,7 @@ func resolveWithBW(secretID string) (string, error) {
 }
 
 func resolveWithBWS(secretID string) (string, error) {
-	commandOutput, err := runSecretCommand("bws", "secret", "get", secretID)
+	commandOutput, err := runBWSSecretCommand(secretID)
 	if err != nil {
 		return "", err
 	}
@@ -46,11 +46,23 @@ func parseBWSSecretOutput(commandOutput string) (string, error) {
 	return strings.TrimSpace(response.Value), nil
 }
 
-func runSecretCommand(command string, args ...string) (string, error) {
+func runBWSecretCommand(secretID string) (string, error) {
 	commandContext, cancel := context.WithTimeout(context.Background(), secretCommandTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(commandContext, command, args...)
+	cmd := exec.CommandContext(commandContext, "bw", "get", "secret", secretID, "--raw") // #nosec G204 -- fixed binary and args; no shell invocation
+	return runAndCaptureOutput(commandContext, cmd)
+}
+
+func runBWSSecretCommand(secretID string) (string, error) {
+	commandContext, cancel := context.WithTimeout(context.Background(), secretCommandTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(commandContext, "bws", "secret", "get", secretID) // #nosec G204 -- fixed binary and args; no shell invocation
+	return runAndCaptureOutput(commandContext, cmd)
+}
+
+func runAndCaptureOutput(commandContext context.Context, cmd *exec.Cmd) (string, error) {
 	commandOutput, err := cmd.CombinedOutput()
 	if err != nil {
 		if errors.Is(commandContext.Err(), context.DeadlineExceeded) {

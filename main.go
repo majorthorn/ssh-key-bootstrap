@@ -10,6 +10,7 @@ import (
 )
 
 const (
+	appName                     = "vibe-ssh-lift"
 	defaultSSHPort              = 22
 	defaultTimeoutSeconds       = 10
 	defaultKnownHostsPath       = "~/.ssh/known_hosts"
@@ -127,7 +128,7 @@ func parseFlags() *options {
 
 	flag.Usage = func() {
 		output := flag.CommandLine.Output()
-		fmt.Fprintf(output, "Usage: %s [OPTIONS]\n\n", os.Args[0])
+		fmt.Fprintf(output, "Usage: %s [OPTIONS]\n\n", appName)
 		fmt.Fprintln(output, "Target Hosts:")
 		fmt.Fprintln(output, "  --host, -s <hosts>         Comma-separated hosts (host or host:port)")
 		fmt.Fprintln(output, "  --hosts-file, -f <path>    File with one host per line")
