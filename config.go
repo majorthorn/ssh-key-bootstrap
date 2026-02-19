@@ -2,14 +2,13 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
-func applyConfigFiles(programOptions *options, providedFlagNames map[string]bool) error {
+func applyConfigFiles(programOptions *options) error {
 	inputReader := bufio.NewReader(os.Stdin)
 
 	selectedDotEnvPath, err := resolveDotEnvSource(programOptions, inputReader)
@@ -21,19 +20,12 @@ func applyConfigFiles(programOptions *options, providedFlagNames map[string]bool
 	}
 
 	programOptions.envFile = selectedDotEnvPath
-	loadedFieldNames, err := applyDotEnvConfigFileWithMetadata(programOptions, providedFlagNames)
+	loadedFieldNames, err := applyDotEnvConfigFileWithMetadata(programOptions)
 	if err != nil {
 		return err
 	}
-
-	if programOptions.skipConfigReview {
-		return nil
-	}
-	if !isInteractiveSession() {
-		return errors.New("config file confirmation requires an interactive terminal")
-	}
-
-	return confirmLoadedConfigFields(inputReader, programOptions, loadedFieldNames)
+	confirmLoadedConfigFields(programOptions, loadedFieldNames)
+	return nil
 }
 
 func resolveDotEnvSource(programOptions *options, inputReader *bufio.Reader) (string, error) {

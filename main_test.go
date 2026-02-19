@@ -59,7 +59,7 @@ func TestNormalizeHost(testContext *testing.T) {
 func TestResolveHostsNoInput(testContext *testing.T) {
 	testContext.Parallel()
 
-	if _, resolveErr := resolveHosts("", "", "", 22); resolveErr == nil {
+	if _, resolveErr := resolveHosts("", "", 22); resolveErr == nil {
 		testContext.Fatalf("expected error without hosts")
 	}
 }
@@ -153,20 +153,7 @@ func TestExtractSingleKey(testContext *testing.T) {
 func TestResolveHosts(testContext *testing.T) {
 	testContext.Parallel()
 
-	tempDirectory := testContext.TempDir()
-	serverListPath := filepath.Join(tempDirectory, "servers.txt")
-	serverListContent := `
-# comment line
-hostA
-hostB:2222
-hostA
-`
-
-	if writeErr := os.WriteFile(serverListPath, []byte(serverListContent), 0o600); writeErr != nil {
-		testContext.Fatalf("write list: %v", writeErr)
-	}
-
-	actualHosts, resolveErr := resolveHosts("hostC", "hostA,hostB:2222", serverListPath, 22)
+	actualHosts, resolveErr := resolveHosts("hostC", "hostA,hostB:2222,hostA", 22)
 	if resolveErr != nil {
 		testContext.Fatalf("resolve hosts: %v", resolveErr)
 	}
@@ -211,7 +198,7 @@ func TestResolvePublicKeyFile(testContext *testing.T) {
 	}
 }
 
-// TestResolvePublicKeyMissingInput ensures missing --key input is rejected.
+// TestResolvePublicKeyMissingInput ensures missing key input is rejected.
 func TestResolvePublicKeyMissingInput(testContext *testing.T) {
 	testContext.Parallel()
 
@@ -241,30 +228,6 @@ func TestAddAuthorizedKeyScriptLFOnly(testContext *testing.T) {
 	}
 }
 
-// TestCanonicalFlagName ensures aliases normalize to config precedence keys.
-func TestCanonicalFlagName(testContext *testing.T) {
-	testContext.Parallel()
-
-	testCases := map[string]string{
-		"host":       "server",
-		"s":          "server",
-		"hosts-file": "servers-file",
-		"k":          "key",
-		"d":          "env-file",
-		"r":          "skip-config-review",
-		"i":          "insecure-ignore-host-key",
-		"o":          "known-hosts",
-		"known":      "known-hosts",
-	}
-
-	for input, expected := range testCases {
-		actual := canonicalFlagName(input)
-		if actual != expected {
-			testContext.Fatalf("canonicalFlagName(%q) = %q, want %q", input, actual, expected)
-		}
-	}
-}
-
 // TestApplyDotEnvConfigFile validates .env parsing and merge behavior.
 func TestApplyDotEnvConfigFile(testContext *testing.T) {
 	testContext.Parallel()
@@ -275,7 +238,6 @@ func TestApplyDotEnvConfigFile(testContext *testing.T) {
 # comment
 SERVER=env-host
 SERVERS=env-a,env-b
-SERVERS_FILE=./env-servers.txt
 export USER=env-user
 PASSWORD='env password'
 PASSWORD_SECRET_REF=bw://ssh-prod-password
@@ -291,20 +253,16 @@ KNOWN_HOSTS=~/.ssh/env_known_hosts
 
 	programOptions := &options{
 		envFile:               dotEnvPath,
-		server:                "cli-host",
+		server:                "existing-host",
 		insecureIgnoreHostKey: false,
 	}
-	providedFlagNames := map[string]bool{
-		"server":                   true,
-		"insecure-ignore-host-key": true,
-	}
 
-	if applyErr := applyDotEnvConfigFile(programOptions, providedFlagNames); applyErr != nil {
+	if applyErr := applyDotEnvConfigFile(programOptions); applyErr != nil {
 		testContext.Fatalf("apply .env config: %v", applyErr)
 	}
 
-	if programOptions.server != "cli-host" {
-		testContext.Fatalf("server overwritten by .env config")
+	if programOptions.server != "env-host" {
+		testContext.Fatalf("server not loaded from .env config")
 	}
 	if programOptions.user != "env-user" {
 		testContext.Fatalf("user not loaded from .env config")
@@ -324,12 +282,12 @@ KNOWN_HOSTS=~/.ssh/env_known_hosts
 	if programOptions.timeoutSec != 40 {
 		testContext.Fatalf("timeout not loaded from .env config")
 	}
-	if programOptions.insecureIgnoreHostKey {
-		testContext.Fatalf("insecure flag should remain CLI value")
+	if !programOptions.insecureIgnoreHostKey {
+		testContext.Fatalf("insecure mode not loaded from .env config")
 	}
 }
 
-// TestApplyConfigFilesRequiresInteractiveReviewByDefault ensures explicit .env loading still requires terminal review.
+// TestApplyConfigFiles allows explicit .env loading without interactive review.
 func TestApplyConfigFiles(testContext *testing.T) {
 	testContext.Parallel()
 
@@ -344,32 +302,10 @@ func TestApplyConfigFiles(testContext *testing.T) {
 		envFile: dotEnvPath,
 	}
 
-	applyErr := applyConfigFiles(programOptions, map[string]bool{})
-	if applyErr == nil {
-		testContext.Fatalf("expected interactive review error when loading config in a non-interactive terminal")
-	}
-}
-
-// TestApplyConfigFilesSkipConfigReviewAllowsNonInteractive ensures config loading can bypass terminal confirmation.
-func TestApplyConfigFilesSkipConfigReviewAllowsNonInteractive(testContext *testing.T) {
-	testContext.Parallel()
-
-	tempDirectory := testContext.TempDir()
-	dotEnvPath := filepath.Join(tempDirectory, ".env")
-	dotEnvContent := "USER=env-user\nPASSWORD=env-password\nSERVER=env-host\n"
-	if writeErr := os.WriteFile(dotEnvPath, []byte(dotEnvContent), 0o600); writeErr != nil {
-		testContext.Fatalf("write .env config: %v", writeErr)
+	if applyErr := applyConfigFiles(programOptions); applyErr != nil {
+		testContext.Fatalf("apply config files: %v", applyErr)
 	}
 
-	programOptions := &options{
-		envFile:               dotEnvPath,
-		skipConfigReview:      true,
-		insecureIgnoreHostKey: false,
-	}
-
-	if applyErr := applyConfigFiles(programOptions, map[string]bool{}); applyErr != nil {
-		testContext.Fatalf("apply config files with skip review: %v", applyErr)
-	}
 	if programOptions.user != "env-user" {
 		testContext.Fatalf("user not loaded from .env config")
 	}
@@ -393,7 +329,7 @@ func TestApplyDotEnvConfigFileInvalidPort(testContext *testing.T) {
 	}
 
 	programOptions := &options{envFile: dotEnvPath}
-	applyErr := applyDotEnvConfigFile(programOptions, map[string]bool{})
+	applyErr := applyDotEnvConfigFile(programOptions)
 	if applyErr == nil {
 		testContext.Fatalf("expected invalid PORT error")
 	}

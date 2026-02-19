@@ -29,7 +29,6 @@ const addAuthorizedKeyScript = "set -eu\n" +
 type options struct {
 	server                string
 	servers               string
-	serversFile           string
 	user                  string
 	password              string
 	passwordSecretRef     string
@@ -39,7 +38,6 @@ type options struct {
 	timeoutSec            int
 	insecureIgnoreHostKey bool
 	knownHosts            string
-	skipConfigReview      bool
 }
 
 type statusError struct {
@@ -64,11 +62,13 @@ func main() {
 }
 
 func run() error {
-	programOptions := parseFlags()
-	providedFlagNames := collectProvidedFlagNames()
+	programOptions, err := parseFlags()
+	if err != nil {
+		return fail(2, "%w", err)
+	}
 
 	fmt.Println("[INFO] Loading configuration...")
-	if err := applyConfigFiles(programOptions, providedFlagNames); err != nil {
+	if err := applyConfigFiles(programOptions); err != nil {
 		return fail(2, "%w", err)
 	}
 	fmt.Println("[INFO] Validating options...")
@@ -83,7 +83,7 @@ func run() error {
 	}
 
 	fmt.Println("[INFO] Resolving target hosts...")
-	hosts, err := resolveHosts(programOptions.server, programOptions.servers, programOptions.serversFile, programOptions.port)
+	hosts, err := resolveHosts(programOptions.server, programOptions.servers, programOptions.port)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
@@ -120,100 +120,30 @@ func run() error {
 	return nil
 }
 
-func parseFlags() *options {
-	programOptions := &options{}
+func parseFlags() (*options, error) {
+	programOptions := &options{
+		port:       defaultSSHPort,
+		timeoutSec: defaultTimeoutSeconds,
+		knownHosts: defaultKnownHostsPath,
+	}
 	normalizeHelpArg()
 
 	flag.Usage = func() {
 		output := flag.CommandLine.Output()
-		fmt.Fprintf(output, "Usage: %s [OPTIONS]\n\n", appName)
-		fmt.Fprintln(output, "Target Hosts:")
-		fmt.Fprintln(output, "  --host, -s <hosts>         Comma-separated hosts (host or host:port)")
-		fmt.Fprintln(output, "  --hosts-file, -f <path>    File with one host per line")
-		fmt.Fprintln(output)
-		fmt.Fprintln(output, "Authentication:")
-		fmt.Fprintln(output, "  --user, -u <name>          SSH username")
-		fmt.Fprintln(output)
-		fmt.Fprintln(output, "Key Input:")
-		fmt.Fprintln(output, "  --key, -k <value>          Public key text or public key file path")
-		fmt.Fprintln(output)
+		fmt.Fprintf(output, "Usage: %s [--env <path>]\n\n", appName)
 		fmt.Fprintln(output, "Config:")
-		fmt.Fprintln(output, "  --env, -d <path>           .env config file")
-		fmt.Fprintln(output, "  --skip-review, -r          Skip interactive config review")
+		fmt.Fprintln(output, "  --env <path>               .env config file")
 		fmt.Fprintln(output)
-		fmt.Fprintln(output, "Connection:")
-		fmt.Fprintf(output, "  --port, -p <n>             Default SSH port (default: %d)\n", defaultSSHPort)
-		fmt.Fprintf(output, "  --timeout, -t <sec>        SSH timeout seconds (default: %d)\n", defaultTimeoutSeconds)
-		fmt.Fprintf(output, "  --known, -o <path>         known_hosts path (default: %s)\n", defaultKnownHostsPath)
-		fmt.Fprintln(output, "  --insecure, -i             Disable host key verification (unsafe)")
-		fmt.Fprintln(output)
-		fmt.Fprintln(output, "Help:")
-		fmt.Fprintln(output, "  --help, -h                 Show this help")
+		fmt.Fprintln(output, "Any missing values are prompted interactively.")
 	}
 
-	flag.StringVar(&programOptions.server, "host", "", "Comma-separated hosts")
-	flag.StringVar(&programOptions.server, "s", "", "Short for --host")
-	flag.StringVar(&programOptions.serversFile, "hosts-file", "", "Path to hosts file")
-	flag.StringVar(&programOptions.serversFile, "f", "", "Short for --hosts-file")
-
-	flag.StringVar(&programOptions.user, "user", "", "SSH username")
-	flag.StringVar(&programOptions.user, "u", "", "Short for --user")
-
-	flag.StringVar(&programOptions.keyInput, "key", "", "Public key text or public key file path")
-	flag.StringVar(&programOptions.keyInput, "k", "", "Short for --key")
 	flag.StringVar(&programOptions.envFile, "env", "", "Path to .env config file")
-	flag.StringVar(&programOptions.envFile, "d", "", "Short for --env")
-	flag.BoolVar(&programOptions.skipConfigReview, "skip-review", false, "Skip config review prompts")
-	flag.BoolVar(&programOptions.skipConfigReview, "r", false, "Short for --skip-review")
-
-	flag.IntVar(&programOptions.port, "port", defaultSSHPort, "Default SSH port when not specified in server entry")
-	flag.IntVar(&programOptions.port, "p", defaultSSHPort, "Short for --port")
-	flag.IntVar(&programOptions.timeoutSec, "timeout", defaultTimeoutSeconds, "SSH timeout in seconds")
-	flag.IntVar(&programOptions.timeoutSec, "t", defaultTimeoutSeconds, "Short for --timeout")
-
-	flag.BoolVar(&programOptions.insecureIgnoreHostKey, "insecure", false, "Disable host key verification (unsafe)")
-	flag.BoolVar(&programOptions.insecureIgnoreHostKey, "i", false, "Short for --insecure")
-	flag.StringVar(&programOptions.knownHosts, "known", defaultKnownHostsPath, "Path to known_hosts file")
-	flag.StringVar(&programOptions.knownHosts, "o", defaultKnownHostsPath, "Short for --known")
 
 	flag.Parse()
-	return programOptions
-}
-
-func collectProvidedFlagNames() map[string]bool {
-	providedFlagNames := map[string]bool{}
-	flag.Visit(func(currentFlag *flag.Flag) { providedFlagNames[canonicalFlagName(currentFlag.Name)] = true })
-	return providedFlagNames
-}
-
-func wasFlagProvided(providedFlagNames map[string]bool, flagName string) bool {
-	return providedFlagNames[flagName]
-}
-
-func canonicalFlagName(flagName string) string {
-	flagAliases := map[string]string{
-		"host":        "server",
-		"s":           "server",
-		"hosts-file":  "servers-file",
-		"f":           "servers-file",
-		"u":           "user",
-		"key":         "key",
-		"k":           "key",
-		"env":         "env-file",
-		"d":           "env-file",
-		"skip-review": "skip-config-review",
-		"r":           "skip-config-review",
-		"p":           "port",
-		"t":           "timeout",
-		"insecure":    "insecure-ignore-host-key",
-		"i":           "insecure-ignore-host-key",
-		"known":       "known-hosts",
-		"o":           "known-hosts",
+	if flag.NArg() > 0 {
+		return nil, fmt.Errorf("unexpected positional arguments: %s", strings.Join(flag.Args(), ", "))
 	}
-	if canonicalName, exists := flagAliases[flagName]; exists {
-		return canonicalName
-	}
-	return flagName
+	return programOptions, nil
 }
 
 func normalizeHelpArg() {

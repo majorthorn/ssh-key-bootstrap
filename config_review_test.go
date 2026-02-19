@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"strings"
 	"testing"
 )
@@ -10,82 +9,23 @@ func TestConfirmLoadedConfigFieldsNoLoadedValues(t *testing.T) {
 	t.Parallel()
 
 	programOptions := &options{}
-	inputReader := bufio.NewReader(strings.NewReader(""))
-	if err := confirmLoadedConfigFields(inputReader, programOptions, map[string]bool{}); err != nil {
-		t.Fatalf("confirm loaded fields: %v", err)
-	}
+	confirmLoadedConfigFields(programOptions, map[string]bool{})
 }
 
-func TestConfirmLoadedConfigFieldsInvalidAnswerThenAccept(t *testing.T) {
-	t.Parallel()
-
-	programOptions := &options{server: "app01"}
-	inputReader := bufio.NewReader(strings.NewReader("maybe\ny\n"))
-
-	err := confirmLoadedConfigFields(inputReader, programOptions, map[string]bool{"server": true})
-	if err != nil {
-		t.Fatalf("confirm loaded fields: %v", err)
-	}
-	if programOptions.server != "app01" {
-		t.Fatalf("server unexpectedly changed: %q", programOptions.server)
-	}
-}
-
-func TestConfirmLoadedConfigFieldsEditPortWithRetry(t *testing.T) {
-	t.Parallel()
-
-	programOptions := &options{port: 22}
-	inputReader := bufio.NewReader(strings.NewReader("n\ninvalid\n2222\n"))
-
-	err := confirmLoadedConfigFields(inputReader, programOptions, map[string]bool{"port": true})
-	if err != nil {
-		t.Fatalf("confirm loaded fields: %v", err)
-	}
-	if programOptions.port != 2222 {
-		t.Fatalf("port = %d, want %d", programOptions.port, 2222)
-	}
-}
-
-func TestConfirmLoadedConfigFieldsAcceptAllRemaining(t *testing.T) {
+func TestConfirmLoadedConfigFieldsLoadedValues(t *testing.T) {
 	t.Parallel()
 
 	programOptions := &options{
-		server: "app01",
-		user:   "deploy",
+		server:   "app01",
+		port:     22,
+		password: "super-secret",
 	}
-	inputReader := bufio.NewReader(strings.NewReader("a\n"))
 
-	err := confirmLoadedConfigFields(inputReader, programOptions, map[string]bool{
-		"server": true,
-		"user":   true,
+	confirmLoadedConfigFields(programOptions, map[string]bool{
+		"server":   true,
+		"port":     true,
+		"password": true,
 	})
-	if err != nil {
-		t.Fatalf("confirm loaded fields: %v", err)
-	}
-	if programOptions.server != "app01" || programOptions.user != "deploy" {
-		t.Fatalf("values unexpectedly changed: server=%q user=%q", programOptions.server, programOptions.user)
-	}
-}
-
-func TestPromptReplacementValueForFieldPasswordInput(t *testing.T) {
-	t.Parallel()
-
-	programOptions := &options{}
-	passwordField := configField{
-		prompt:        "Password: ",
-		passwordInput: true,
-		set: func(optionsValue *options, value string) error {
-			optionsValue.password = value
-			return nil
-		},
-	}
-	inputReader := bufio.NewReader(strings.NewReader("super-secret\n"))
-	if err := promptReplacementValueForField(inputReader, programOptions, passwordField); err != nil {
-		t.Fatalf("prompt replacement value: %v", err)
-	}
-	if programOptions.password != "super-secret" {
-		t.Fatalf("password = %q, want %q", programOptions.password, "super-secret")
-	}
 }
 
 func TestPreviewHelpers(t *testing.T) {

@@ -26,72 +26,23 @@ go build -o vibe-ssh-lift .
 ## Usage
 
 ```bash
-./vibe-ssh-lift [OPTIONS]
+./vibe-ssh-lift [--env <path>]
 ```
 
 If required values are missing, the tool prompts interactively.
-If no config flag is provided, the tool checks for `.env` in the same directory as the executable and asks whether to use it.
+If `--env` is not provided, the tool checks for `.env` in the same directory as the executable and asks whether to use it.
 
 ## Flags
 
-- `--host`, `-s` Host list (`host` or `host:port`, comma-separated).
-- `--hosts-file`, `-f` File with one server per line (`#` comments and blank lines allowed).
-- `--user`, `-u` SSH username.
-- `--key`, `-k` Public key text (`ssh-ed25519 AAAA...`) or path to a public key file.
-- `--env`, `-d` dotenv config file path.
-- `--skip-review`, `-r` Skip interactive review/edit prompts for config-loaded values.
-- `--port`, `-p` Default SSH port (default: `22`).
-- `--timeout`, `-t` SSH timeout seconds (default: `10`).
-- `--known`, `-o` `known_hosts` file path (default: `~/.ssh/known_hosts`).
-- `--insecure`, `-i` Disable host key verification (unsafe).
-- `--help`, `-h` Show help.
+- `--env` dotenv config file path.
+- `--help` Show help.
 
 ## Examples
 
-### Single Host, Key File Path via `--key`
+### Interactive Run
 
 ```bash
-./vibe-ssh-lift \
-  --host 192.168.1.10 \
-  --user deploy \
-  --key ~/.ssh/id_ed25519.pub
-```
-
-### Multiple Hosts From File
-
-```bash
-./vibe-ssh-lift \
-  --hosts-file ./servers.txt \
-  --user deploy \
-  --key ~/.ssh/id_ed25519.pub
-```
-
-`servers.txt` example:
-
-```text
-# app nodes
-app01.internal
-app02.internal:2222
-10.0.2.14
-```
-
-### Multiple Hosts Inline
-
-```bash
-./vibe-ssh-lift \
-  --host "host1,host2:2222" \
-  --user deploy \
-  --key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..."
-```
-
-### Custom known_hosts Path
-
-```bash
-./vibe-ssh-lift \
-  --host host1 \
-  --user deploy \
-  --key ~/.ssh/id_ed25519.pub \
-  --known ./known_hosts
+./vibe-ssh-lift
 ```
 
 ### .env Config File
@@ -120,8 +71,7 @@ Real configs should live outside of Git commits. Keep `configexamples/` full of 
 Config discovery and review happen before any keys are pushed:
 
 - When `.env` is detected next to the binary (or provided via `--env`), the tool can load it before execution.
-- The selection flow requires an interactive terminal because the tool then asks you to confirm or replace every loaded field before it runs; sensitive fields such as the password are masked (only a short prefix is shown) so you can verify without exposing the secret.
-- CLI flags keep taking priority over config values, making it easy to override a template for a single run.
+- Loaded config values are printed before execution; sensitive fields such as the password are masked (only a short prefix is shown).
 
 ## Optional Secret References
 
@@ -174,26 +124,16 @@ Provider files can be split by concern for easier maintenance (recommended for n
 
 - If `.env` is found next to the binary, the tool asks whether to use it.
 - If `--env` is set, the provided `.env` path is used.
-- CLI flags still override matching values from the selected config file.
-- Use `--skip-review` to bypass the interactive per-field confirmation step (useful for non-interactive runs).
 
 ## Config Review Prompt
 
-When a config file is used, the tool asks you to review values one-by-one before continuing. For each field you can choose:
-
-- `y` to accept the current value.
-- `n` to edit and replace the value.
-- `a` to accept all remaining values.
-
-Sensitive values are masked in the preview (for example, the password only shows a short prefix) so you can validate without exposing full secrets on screen.
-
-This review flow requires an interactive terminal session when a config file is used.
+When a config file is used, the tool prints loaded values before continuing. Sensitive values are masked in the preview (for example, the password only shows a short prefix) so you can validate without exposing full secrets on screen.
 
 ## Security Notes
 
 - Secure mode is default: host keys are checked against `known_hosts`.
 - Unknown hosts are handled interactively (trust prompt + persist on approval), similar to OpenSSH.
-- Use `--insecure` only for temporary testing.
+- Use `INSECURE_IGNORE_HOST_KEY=true` in `.env` only for temporary testing.
 - Prefer `PASSWORD_SECRET_REF` over plaintext password values.
 - Ensure the public key input contains exactly one valid authorized key line.
 

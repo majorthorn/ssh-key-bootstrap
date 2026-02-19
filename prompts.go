@@ -53,8 +53,7 @@ func fillMissingInputs(inputReader *bufio.Reader, programOptions *options) error
 	}
 
 	if strings.TrimSpace(programOptions.server) == "" &&
-		strings.TrimSpace(programOptions.servers) == "" &&
-		strings.TrimSpace(programOptions.serversFile) == "" {
+		strings.TrimSpace(programOptions.servers) == "" {
 		programOptions.servers, err = promptRequired(inputReader, "Servers (comma-separated, host or host:port): ")
 		if err != nil {
 			return err
@@ -109,22 +108,4 @@ func promptPassword(reader *bufio.Reader, label string) (string, error) {
 		}
 		fmt.Println("Value is required.")
 	}
-}
-
-func promptPasswordAllowEmpty(reader *bufio.Reader, label string) (string, error) {
-	fmt.Print(label)
-	if isTerminal(os.Stdin) {
-		passwordBytes, err := readPassword(os.Stdin)
-		fmt.Println()
-		if err != nil {
-			return "", err
-		}
-		return string(passwordBytes), nil
-	}
-
-	line, err := reader.ReadString('\n')
-	if err != nil && !errors.Is(err, io.EOF) {
-		return "", err
-	}
-	return strings.TrimSpace(line), nil
 }

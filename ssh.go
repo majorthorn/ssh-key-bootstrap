@@ -34,7 +34,7 @@ func buildSSHConfig(programOptions *options) (*ssh.ClientConfig, error) {
 
 func buildHostKeyCallback(insecure bool, knownHostsPath string) (ssh.HostKeyCallback, error) {
 	if insecure {
-		return ssh.InsecureIgnoreHostKey(), nil // #nosec G106 -- explicitly enabled via --insecure flag
+		return ssh.InsecureIgnoreHostKey(), nil // #nosec G106 -- explicitly enabled via config input
 	}
 
 	path, err := expandHomePath(strings.TrimSpace(knownHostsPath))
@@ -182,7 +182,7 @@ func addAuthorizedKeyWithStatus(hostAddress, publicKey string, clientConfig *ssh
 	return nil
 }
 
-func resolveHosts(server, servers, serversFile string, defaultPort int) ([]string, error) {
+func resolveHosts(server, servers string, defaultPort int) ([]string, error) {
 	hostSet := map[string]struct{}{}
 
 	addHost := func(rawHost string) error {
@@ -206,30 +206,6 @@ func resolveHosts(server, servers, serversFile string, defaultPort int) ([]strin
 	for _, candidateEntry := range splitServerEntries(servers) {
 		if err := addHost(candidateEntry); err != nil {
 			return nil, err
-		}
-	}
-
-	if strings.TrimSpace(serversFile) != "" {
-		serversFileHandle, err := os.Open(serversFile) // #nosec G304 -- servers file path comes from CLI/config input
-		if err != nil {
-			return nil, fmt.Errorf("open servers file: %w", err)
-		}
-		defer serversFileHandle.Close()
-
-		fileScanner := bufio.NewScanner(serversFileHandle)
-		lineNo := 0
-		for fileScanner.Scan() {
-			lineNo++
-			line := strings.TrimSpace(fileScanner.Text())
-			if line == "" || strings.HasPrefix(line, "#") {
-				continue
-			}
-			if err := addHost(line); err != nil {
-				return nil, fmt.Errorf("servers file line %d: %w", lineNo, err)
-			}
-		}
-		if err := fileScanner.Err(); err != nil {
-			return nil, fmt.Errorf("read servers file: %w", err)
 		}
 	}
 
@@ -297,9 +273,9 @@ func resolvePublicKey(keyInput string) (string, error) {
 	if pathErr != nil {
 		path = trimmedInput
 	}
-	fileBytes, readErr := os.ReadFile(path) // #nosec G304 -- key file path comes from CLI/config input
+	fileBytes, readErr := os.ReadFile(path) // #nosec G304 -- key file path comes from user input/config
 	if readErr != nil {
-		return "", fmt.Errorf("invalid --key value: expected a public key or readable file path %q: %w", trimmedInput, readErr)
+		return "", fmt.Errorf("invalid key input: expected a public key or readable file path %q: %w", trimmedInput, readErr)
 	}
 	publicKey, parseErr := parsePublicKeyFromRawInput(string(fileBytes))
 	if parseErr != nil {
