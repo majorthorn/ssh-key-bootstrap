@@ -8,11 +8,11 @@ import (
 	"os"
 	"strings"
 
-	appconfig "vibe-ssh-lift/internal/config"
+	appconfig "ssh-key-bootstrap/internal/config"
 )
 
 const (
-	appName                 = "vibe-ssh-lift"
+	appName                 = "ssh-key-bootstrap"
 	defaultSSHPort          = 22
 	defaultTimeoutSeconds   = 10
 	defaultKnownHostsPath   = "~/.ssh/known_hosts"

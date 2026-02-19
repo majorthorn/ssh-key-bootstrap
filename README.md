@@ -1,4 +1,4 @@
-# vibe-ssh-lift
+# ssh-key-bootstrap
 
 Add a public SSH key to one or more remote Linux/Unix hosts over SSH.
 
@@ -14,18 +14,18 @@ Add a public SSH key to one or more remote Linux/Unix hosts over SSH.
 - Verifies host keys with `known_hosts` by default (secure mode).
 - For unknown hosts, prompts you to trust the presented key and stores it in `known_hosts` when accepted.
 - Prints Ansible-style task/status output with a final play recap.
-- Writes a run log to `vibe-ssh-lift.log` in the same directory as the executable.
+- Writes a run log to `ssh-key-bootstrap.log` in the same directory as the executable.
 
 ## Build
 
 ```bash
-go build -o vibe-ssh-lift .
+go build -o ssh-key-bootstrap .
 ```
 
 ## Usage
 
 ```bash
-./vibe-ssh-lift [--env <path>]
+./ssh-key-bootstrap [--env <path>]
 ```
 
 If required values are missing, the tool prompts for them interactively.
@@ -39,7 +39,7 @@ If `--env` is not provided, interactive runs check for `.env` in the same direct
 ## Output and Logs
 
 - Runtime output follows an Ansible-style format: `TASK [...]`, per-host `ok/changed/failed`, then `PLAY RECAP`.
-- Output is written to console and appended to `vibe-ssh-lift.log` next to the executable.
+- Output is written to console and appended to `ssh-key-bootstrap.log` next to the executable.
 - Log file lines are prefixed with UTC ISO-8601 timestamps.
 
 ## Examples
@@ -47,13 +47,13 @@ If `--env` is not provided, interactive runs check for `.env` in the same direct
 ### Interactive Run
 
 ```bash
-./vibe-ssh-lift
+./ssh-key-bootstrap
 ```
 
 ### .env File
 
 ```bash
-./vibe-ssh-lift --env configexamples/.env.example
+./ssh-key-bootstrap --env configexamples/.env.example
 ```
 
 Example `configexamples/.env.example`:
@@ -73,7 +73,7 @@ INSECURE_IGNORE_HOST_KEY=false
 
 ## Where to Put Config Files
 
-Real config files should live outside Git commits. Keep `configexamples/` for templates such as the one above, then copy or rewrite the version you actually use (`<name>.env`) alongside the executable or anywhere else you prefer. When running `vibe-ssh-lift`, point to it with `--env ./my-prod.env`. Use the example as a starting point, update credentials and servers, and add the real file to `.gitignore` so it stays private while the template remains tracked.
+Real config files should live outside Git commits. Keep `configexamples/` for templates such as the one above, then copy or rewrite the version you actually use (`<name>.env`) alongside the executable or anywhere else you prefer. When running `ssh-key-bootstrap`, point to it with `--env ./my-prod.env`. Use the example as a starting point, update credentials and servers, and add the real file to `.gitignore` so it stays private while the template remains tracked.
 
 Config discovery and review happen before any keys are pushed:
 

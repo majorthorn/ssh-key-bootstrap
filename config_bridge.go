@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"os"
 
-	appconfig "vibe-ssh-lift/internal/config"
+	appconfig "ssh-key-bootstrap/internal/config"
 )
 
 type configRuntimeIO struct {

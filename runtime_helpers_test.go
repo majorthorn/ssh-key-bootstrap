@@ -194,7 +194,7 @@ func TestFailReturnsStatusError(t *testing.T) {
 }
 
 func TestParseFlagsDefaults(t *testing.T) {
-	setCommandLineForTest(t, []string{"vibe-ssh-lift"})
+	setCommandLineForTest(t, []string{"ssh-key-bootstrap"})
 
 	programOptions, err := parseFlags()
 	if err != nil {
@@ -215,7 +215,7 @@ func TestParseFlagsDefaults(t *testing.T) {
 }
 
 func TestParseFlagsEnv(t *testing.T) {
-	setCommandLineForTest(t, []string{"vibe-ssh-lift", "--env", "/tmp/test.env"})
+	setCommandLineForTest(t, []string{"ssh-key-bootstrap", "--env", "/tmp/test.env"})
 
 	programOptions, err := parseFlags()
 	if err != nil {
@@ -227,7 +227,7 @@ func TestParseFlagsEnv(t *testing.T) {
 }
 
 func TestParseFlagsUsageText(t *testing.T) {
-	setCommandLineForTest(t, []string{"vibe-ssh-lift"})
+	setCommandLineForTest(t, []string{"ssh-key-bootstrap"})
 	_, errorBuffer := captureWriters(t)
 
 	if _, err := parseFlags(); err != nil {
@@ -236,7 +236,7 @@ func TestParseFlagsUsageText(t *testing.T) {
 	flag.Usage()
 
 	usageOutput := errorBuffer.String()
-	if !strings.Contains(usageOutput, "Usage: vibe-ssh-lift [--env <path>]") {
+	if !strings.Contains(usageOutput, "Usage: ssh-key-bootstrap [--env <path>]") {
 		t.Fatalf("usage output missing usage line: %q", usageOutput)
 	}
 	if !strings.Contains(usageOutput, "--env <path>") {
@@ -245,7 +245,7 @@ func TestParseFlagsUsageText(t *testing.T) {
 }
 
 func TestParseFlagsUnexpectedPositionalArgs(t *testing.T) {
-	setCommandLineForTest(t, []string{"vibe-ssh-lift", "unexpected-arg"})
+	setCommandLineForTest(t, []string{"ssh-key-bootstrap", "unexpected-arg"})
 
 	programOptions, err := parseFlags()
 	if err == nil {
@@ -261,7 +261,7 @@ func TestParseFlagsUnexpectedPositionalArgs(t *testing.T) {
 
 func TestNormalizeHelpArg(t *testing.T) {
 	originalArgs := os.Args
-	os.Args = []string{"vibe-ssh-lift", " --help ", "--env", "config.env"}
+	os.Args = []string{"ssh-key-bootstrap", " --help ", "--env", "config.env"}
 	t.Cleanup(func() { os.Args = originalArgs })
 
 	normalizeHelpArg()
@@ -274,7 +274,7 @@ func TestNormalizeHelpArg(t *testing.T) {
 }
 
 func TestRunReturnsStatusErrorForParseFailure(t *testing.T) {
-	setCommandLineForTest(t, []string{"vibe-ssh-lift", "extra"})
+	setCommandLineForTest(t, []string{"ssh-key-bootstrap", "extra"})
 
 	err := run()
 	if err == nil {
@@ -311,7 +311,7 @@ func TestRunReturnsHostFailureWhenSSHDialFails(t *testing.T) {
 		t.Fatalf("write .env file: %v", err)
 	}
 
-	setCommandLineForTest(t, []string{"vibe-ssh-lift", "--env", dotEnvPath})
+	setCommandLineForTest(t, []string{"ssh-key-bootstrap", "--env", dotEnvPath})
 
 	err := run()
 	if err == nil {
@@ -343,7 +343,7 @@ func TestRunReturnsHostFailureWhenSSHDialFails(t *testing.T) {
 
 func TestMainExitsWithStatusErrorCode(t *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_MAIN_EXIT") == "1" {
-		os.Args = []string{"vibe-ssh-lift", "unexpected-positional-arg"}
+		os.Args = []string{"ssh-key-bootstrap", "unexpected-positional-arg"}
 		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 		main()
 		return
@@ -769,7 +769,7 @@ func TestSetupRunLogFileCreatesLogAndRestoresWriters(t *testing.T) {
 		t.Fatalf("os.Executable() error = %v", err)
 	}
 
-	logName := "vibe-ssh-lift-test-" + strings.ReplaceAll(t.Name(), "/", "-")
+	logName := "ssh-key-bootstrap-test-" + strings.ReplaceAll(t.Name(), "/", "-")
 	logPath := filepath.Join(filepath.Dir(executablePath), logName+".log")
 	_ = os.Remove(logPath)
 	t.Cleanup(func() { _ = os.Remove(logPath) })

@@ -1,5 +1,5 @@
 package all
 
 import (
-	_ "vibe-ssh-lift/providers/bitwarden"
+	_ "ssh-key-bootstrap/providers/bitwarden"
 )

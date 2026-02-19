@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"vibe-ssh-lift/providers"
+	"ssh-key-bootstrap/providers"
 )
 
 var resolvePasswordFromSecretRef = func(secretRef string) (string, error) {

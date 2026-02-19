@@ -3,7 +3,7 @@ package bitwarden
 import (
 	"strings"
 
-	"vibe-ssh-lift/providers"
+	"ssh-key-bootstrap/providers"
 )
 
 type provider struct{}

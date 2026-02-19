@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/ssh"
-	"vibe-ssh-lift/providers"
+	"ssh-key-bootstrap/providers"
 )
 
 // TestNormalizeHost verifies ports/default handling across host inputs.

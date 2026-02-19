@@ -1,5 +1,5 @@
 package main
 
 import (
-	_ "vibe-ssh-lift/providers/all"
+	_ "ssh-key-bootstrap/providers/all"
 )

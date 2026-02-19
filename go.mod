@@ -1,4 +1,4 @@
-module vibe-ssh-lift
+module ssh-key-bootstrap
 
 go 1.25.0
 
