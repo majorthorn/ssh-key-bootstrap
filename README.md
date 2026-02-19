@@ -15,6 +15,7 @@ Add a public SSH key to one or more remote Linux/Unix hosts over SSH.
 - Creates `~/.ssh` and `~/.ssh/authorized_keys` if needed.
 - Adds the key only if it is not already present.
 - Verifies host keys with `known_hosts` by default (secure mode).
+- For unknown hosts, prompts you to trust the presented key and stores it in `known_hosts` when accepted.
 
 ## Build
 
@@ -33,19 +34,21 @@ If no config flag is provided, the tool checks for `.env` and `config.json` in t
 
 ## Flags
 
-- `-server` One or more hosts (`host` or `host:port`, comma-separated). The flag accepts multiple values without requiring you to remember two different names.
-- `-servers-file` File with one server per line (`#` comments and blank lines allowed).
-- `-user` SSH username.
-- `-password` SSH password (less secure than prompt or env var).
-- `-password-env` Name of environment variable containing SSH password.
-- `-pubkey` Public key text (`ssh-ed25519 AAAA...`).
-- `-pubkey-file` Path to public key file.
-- `-json-file` Path to JSON config file.
-- `-env-file` Path to `.env` config file.
-- `-port` Default port when server entry has no port (default: `22`).
-- `-timeout` SSH timeout seconds (default: `10`).
-- `-known-hosts` Path to `known_hosts` (default: `~/.ssh/known_hosts`).
-- `-insecure-ignore-host-key` Disable host key verification (unsafe).
+- `-server`, `-host`, `-s` Host list (`host` or `host:port`, comma-separated).
+- `-servers-file`, `-hosts-file`, `-f` File with one server per line (`#` comments and blank lines allowed).
+- `-user`, `-u` SSH username.
+- `-password`, `-pass`, `-w` SSH password (less secure than prompt or env var).
+- `-password-env`, `-pass-env`, `-e` Environment variable containing SSH password.
+- `-pubkey`, `-key`, `-k` Public key text (`ssh-ed25519 AAAA...`).
+- `-pubkey-file`, `-key-file`, `-K` Path to public key file.
+- `-json-file`, `-json`, `-j` JSON config file path.
+- `-env-file`, `-env`, `-d` dotenv config file path.
+- `-skip-config-review`, `-skip-review`, `-r` Skip interactive review/edit prompts for config-loaded values.
+- `-port`, `-p` Default SSH port (default: `22`).
+- `-timeout`, `-t` SSH timeout seconds (default: `10`).
+- `-known-hosts`, `-known`, `-o` `known_hosts` file path (default: `~/.ssh/known_hosts`).
+- `-insecure-ignore-host-key`, `-insecure`, `-i` Disable host key verification (unsafe).
+- `-h`, `--help` Show help.
 
 ## Examples
 
@@ -154,6 +157,7 @@ Config discovery and review happen before any keys are pushed:
 - If only one is found, the tool asks whether you want to use it.
 - If both `-env-file` and `-json-file` are set, the tool asks you to choose one and uses only that one.
 - CLI flags still override matching values from the selected config file.
+- Use `-skip-config-review` to bypass the interactive per-field confirmation step (useful for non-interactive runs).
 
 ## Config Review Prompt
 
@@ -170,6 +174,7 @@ This review flow requires an interactive terminal session when a config file is 
 ## Security Notes
 
 - Secure mode is default: host keys are checked against `known_hosts`.
+- Unknown hosts are handled interactively (trust prompt + persist on approval), similar to OpenSSH.
 - Use `-insecure-ignore-host-key` only for temporary testing.
 - Prefer `-password-env` or interactive password prompt over `-password`.
 - Ensure the public key input contains exactly one valid authorized key line.

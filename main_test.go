@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -189,6 +190,34 @@ func TestAddAuthorizedKeyScriptLFOnly(testContext *testing.T) {
 	}
 }
 
+// TestCanonicalFlagName ensures aliases normalize to config precedence keys.
+func TestCanonicalFlagName(testContext *testing.T) {
+	testContext.Parallel()
+
+	testCases := map[string]string{
+		"host":        "server",
+		"s":           "server",
+		"hosts-file":  "servers-file",
+		"pass":        "password",
+		"k":           "pubkey",
+		"K":           "pubkey-file",
+		"j":           "json-file",
+		"d":           "env-file",
+		"r":           "skip-config-review",
+		"i":           "insecure-ignore-host-key",
+		"o":           "known-hosts",
+		"server":      "server",
+		"known-hosts": "known-hosts",
+	}
+
+	for input, expected := range testCases {
+		actual := canonicalFlagName(input)
+		if actual != expected {
+			testContext.Fatalf("canonicalFlagName(%q) = %q, want %q", input, actual, expected)
+		}
+	}
+}
+
 // TestApplyJSONConfigFile validates JSON config merge behavior and CLI precedence.
 func TestApplyJSONConfigFile(testContext *testing.T) {
 	testContext.Parallel()
@@ -336,6 +365,37 @@ func TestApplyConfigFiles(testContext *testing.T) {
 	}
 }
 
+// TestApplyConfigFilesSkipConfigReviewAllowsNonInteractive ensures config loading can bypass terminal confirmation.
+func TestApplyConfigFilesSkipConfigReviewAllowsNonInteractive(testContext *testing.T) {
+	testContext.Parallel()
+
+	tempDirectory := testContext.TempDir()
+	dotEnvPath := filepath.Join(tempDirectory, ".env")
+	dotEnvContent := "USER=env-user\nPASSWORD=env-password\nSERVER=env-host\n"
+	if writeErr := os.WriteFile(dotEnvPath, []byte(dotEnvContent), 0o600); writeErr != nil {
+		testContext.Fatalf("write .env config: %v", writeErr)
+	}
+
+	programOptions := &options{
+		envFile:               dotEnvPath,
+		skipConfigReview:      true,
+		insecureIgnoreHostKey: false,
+	}
+
+	if applyErr := applyConfigFiles(programOptions, map[string]bool{}); applyErr != nil {
+		testContext.Fatalf("apply config files with skip review: %v", applyErr)
+	}
+	if programOptions.user != "env-user" {
+		testContext.Fatalf("user not loaded from .env config")
+	}
+	if programOptions.password != "env-password" {
+		testContext.Fatalf("password not loaded from .env config")
+	}
+	if programOptions.server != "env-host" {
+		testContext.Fatalf("server not loaded from .env config")
+	}
+}
+
 // TestApplyDotEnvConfigFileInvalidPort validates numeric conversion errors in .env input.
 func TestApplyDotEnvConfigFileInvalidPort(testContext *testing.T) {
 	testContext.Parallel()
@@ -355,6 +415,118 @@ func TestApplyDotEnvConfigFileInvalidPort(testContext *testing.T) {
 	if !strings.Contains(applyErr.Error(), "PORT") {
 		testContext.Fatalf("expected PORT error message, got %v", applyErr)
 	}
+}
+
+// TestBuildHostKeyCallbackUnknownHostAccepted verifies unknown hosts can be trusted once and persisted.
+func TestBuildHostKeyCallbackUnknownHostAccepted(testContext *testing.T) {
+	tempDirectory := testContext.TempDir()
+	knownHostsPath := filepath.Join(tempDirectory, "known_hosts")
+	hostPublicKey := parsePublicKeyFromAuthorizedLine(testContext, generateTestKey(testContext))
+
+	originalPrompter := confirmUnknownHost
+	promptCalls := 0
+	confirmUnknownHost = func(hostname, path string, key ssh.PublicKey) (bool, error) {
+		promptCalls++
+		return true, nil
+	}
+	testContext.Cleanup(func() { confirmUnknownHost = originalPrompter })
+
+	hostKeyCallback, callbackErr := buildHostKeyCallback(false, knownHostsPath)
+	if callbackErr != nil {
+		testContext.Fatalf("build host key callback: %v", callbackErr)
+	}
+
+	remoteAddress := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 22}
+	if callbackErr := hostKeyCallback("example.com:22", remoteAddress, hostPublicKey); callbackErr != nil {
+		testContext.Fatalf("accept unknown host: %v", callbackErr)
+	}
+	if callbackErr := hostKeyCallback("example.com:22", remoteAddress, hostPublicKey); callbackErr != nil {
+		testContext.Fatalf("re-validate trusted host: %v", callbackErr)
+	}
+
+	if promptCalls != 1 {
+		testContext.Fatalf("expected 1 trust prompt, got %d", promptCalls)
+	}
+
+	knownHostsBytes, readErr := os.ReadFile(knownHostsPath)
+	if readErr != nil {
+		testContext.Fatalf("read known_hosts: %v", readErr)
+	}
+	knownHostsContent := string(knownHostsBytes)
+	if !strings.Contains(knownHostsContent, "example.com") || !strings.Contains(knownHostsContent, hostPublicKey.Type()) {
+		testContext.Fatalf("known_hosts missing trusted entry: %q", knownHostsContent)
+	}
+}
+
+// TestBuildHostKeyCallbackUnknownHostRejected verifies rejected hosts are not stored.
+func TestBuildHostKeyCallbackUnknownHostRejected(testContext *testing.T) {
+	tempDirectory := testContext.TempDir()
+	knownHostsPath := filepath.Join(tempDirectory, "known_hosts")
+	hostPublicKey := parsePublicKeyFromAuthorizedLine(testContext, generateTestKey(testContext))
+
+	originalPrompter := confirmUnknownHost
+	confirmUnknownHost = func(hostname, path string, key ssh.PublicKey) (bool, error) {
+		return false, nil
+	}
+	testContext.Cleanup(func() { confirmUnknownHost = originalPrompter })
+
+	hostKeyCallback, callbackErr := buildHostKeyCallback(false, knownHostsPath)
+	if callbackErr != nil {
+		testContext.Fatalf("build host key callback: %v", callbackErr)
+	}
+
+	remoteAddress := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 22}
+	callbackErr = hostKeyCallback("example.com:22", remoteAddress, hostPublicKey)
+	if callbackErr == nil {
+		testContext.Fatalf("expected rejection error")
+	}
+	if !strings.Contains(callbackErr.Error(), "rejected by user") {
+		testContext.Fatalf("unexpected error: %v", callbackErr)
+	}
+}
+
+// TestBuildHostKeyCallbackMismatchSkipsPrompt verifies mismatched known keys fail without trust prompt.
+func TestBuildHostKeyCallbackMismatchSkipsPrompt(testContext *testing.T) {
+	tempDirectory := testContext.TempDir()
+	knownHostsPath := filepath.Join(tempDirectory, "known_hosts")
+	existingPublicKey := parsePublicKeyFromAuthorizedLine(testContext, generateTestKey(testContext))
+	newPublicKey := parsePublicKeyFromAuthorizedLine(testContext, generateTestKey(testContext))
+
+	if appendErr := appendKnownHost(knownHostsPath, "example.com:22", existingPublicKey); appendErr != nil {
+		testContext.Fatalf("seed known_hosts: %v", appendErr)
+	}
+
+	originalPrompter := confirmUnknownHost
+	promptCalls := 0
+	confirmUnknownHost = func(hostname, path string, key ssh.PublicKey) (bool, error) {
+		promptCalls++
+		return true, nil
+	}
+	testContext.Cleanup(func() { confirmUnknownHost = originalPrompter })
+
+	hostKeyCallback, callbackErr := buildHostKeyCallback(false, knownHostsPath)
+	if callbackErr != nil {
+		testContext.Fatalf("build host key callback: %v", callbackErr)
+	}
+
+	remoteAddress := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 22}
+	callbackErr = hostKeyCallback("example.com:22", remoteAddress, newPublicKey)
+	if callbackErr == nil {
+		testContext.Fatalf("expected mismatch error")
+	}
+	if promptCalls != 0 {
+		testContext.Fatalf("expected no prompt for mismatched host key, got %d", promptCalls)
+	}
+}
+
+func parsePublicKeyFromAuthorizedLine(testContext *testing.T, authorizedLine string) ssh.PublicKey {
+	testContext.Helper()
+
+	publicKey, _, _, _, parseErr := ssh.ParseAuthorizedKey([]byte(authorizedLine))
+	if parseErr != nil {
+		testContext.Fatalf("parse authorized key: %v", parseErr)
+	}
+	return publicKey
 }
 
 // generateTestKey synthesizes a valid ed25519 public key for authorized_keys usage.

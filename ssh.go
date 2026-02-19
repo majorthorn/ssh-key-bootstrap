@@ -6,14 +6,19 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
+	"golang.org/x/term"
 )
+
+var confirmUnknownHost = promptTrustUnknownHost
 
 func buildSSHConfig(programOptions *options) (*ssh.ClientConfig, error) {
 	hostKeyCallback, err := buildHostKeyCallback(programOptions.insecureIgnoreHostKey, programOptions.knownHosts)
@@ -38,14 +43,107 @@ func buildHostKeyCallback(insecure bool, knownHostsPath string) (ssh.HostKeyCall
 		return nil, fmt.Errorf("resolve known_hosts path: %w", err)
 	}
 
+	if err := ensureKnownHostsFile(path); err != nil {
+		return nil, fmt.Errorf("prepare known_hosts file: %w", err)
+	}
+
 	callback, err := knownhosts.New(path)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("known_hosts file not found at %q (create it or use -insecure-ignore-host-key)", path)
-		}
 		return nil, fmt.Errorf("load known_hosts: %w", err)
 	}
-	return callback, nil
+
+	var callbackGuard sync.Mutex
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		callbackGuard.Lock()
+		defer callbackGuard.Unlock()
+
+		if callbackErr := callback(hostname, remote, key); callbackErr == nil {
+			return nil
+		} else {
+			var keyErr *knownhosts.KeyError
+			if !errors.As(callbackErr, &keyErr) || len(keyErr.Want) > 0 {
+				return callbackErr
+			}
+
+			trustHost, promptErr := confirmUnknownHost(hostname, path, key)
+			if promptErr != nil {
+				return promptErr
+			}
+			if !trustHost {
+				return fmt.Errorf("host key for %s rejected by user", hostname)
+			}
+
+			if appendErr := appendKnownHost(path, hostname, key); appendErr != nil {
+				return fmt.Errorf("store trusted host key: %w", appendErr)
+			}
+
+			reloadedCallback, reloadErr := knownhosts.New(path)
+			if reloadErr != nil {
+				return fmt.Errorf("reload known_hosts: %w", reloadErr)
+			}
+			callback = reloadedCallback
+			return nil
+		}
+	}, nil
+}
+
+func ensureKnownHostsFile(path string) error {
+	parentDirectory := filepath.Dir(path)
+	if parentDirectory != "." {
+		if err := os.MkdirAll(parentDirectory, 0o700); err != nil {
+			return err
+		}
+	}
+
+	fileHandle, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	return fileHandle.Close()
+}
+
+func promptTrustUnknownHost(hostname, knownHostsPath string, key ssh.PublicKey) (bool, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		return false, fmt.Errorf("unknown host %s and no interactive terminal available to confirm trust", hostname)
+	}
+
+	fmt.Printf("The authenticity of host %q can't be established.\n", hostname)
+	fmt.Printf("%s key fingerprint is %s.\n", key.Type(), ssh.FingerprintSHA256(key))
+
+	reader := bufio.NewReader(os.Stdin)
+	for {
+		answer, err := promptLine(reader, fmt.Sprintf("Trust this host and add it to %s? (yes/no): ", knownHostsPath))
+		if err != nil {
+			return false, err
+		}
+
+		switch strings.ToLower(strings.TrimSpace(answer)) {
+		case "yes", "y":
+			return true, nil
+		case "no", "n":
+			return false, nil
+		default:
+			fmt.Println(`Please answer "yes" or "no".`)
+		}
+	}
+}
+
+func appendKnownHost(path, hostname string, key ssh.PublicKey) error {
+	if err := ensureKnownHostsFile(path); err != nil {
+		return err
+	}
+
+	knownHostLine := knownhosts.Line([]string{knownhosts.Normalize(hostname)}, key)
+	fileHandle, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
+	if err != nil {
+		return err
+	}
+	defer fileHandle.Close()
+
+	if _, err := fileHandle.WriteString(knownHostLine + "\n"); err != nil {
+		return err
+	}
+	return nil
 }
 
 func addAuthorizedKey(hostAddress, publicKey string, clientConfig *ssh.ClientConfig) error {

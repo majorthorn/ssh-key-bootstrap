@@ -74,6 +74,9 @@ func applyConfigFiles(programOptions *options, providedFlagNames map[string]bool
 	if err != nil {
 		return err
 	}
+	if programOptions.skipConfigReview {
+		return nil
+	}
 	if !isInteractiveSession() {
 		return errors.New("config file confirmation requires an interactive terminal")
 	}
