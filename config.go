@@ -20,6 +20,7 @@ type jsonConfigOptions struct {
 	ServersFile           *string `json:"servers_file"`
 	User                  *string `json:"user"`
 	Password              *string `json:"password"`
+	PasswordSecretRef     *string `json:"password_secret_ref"`
 	Key                   *string `json:"key"`
 	PubKey                *string `json:"pubkey"`
 	PubKeyFile            *string `json:"pubkey_file"`
@@ -311,6 +312,11 @@ func applyJSONConfigFileWithMetadata(programOptions *options, providedFlagNames 
 	if parsedJSONConfig.Password != nil {
 		setLoaded("password", "password", func() { programOptions.password = *parsedJSONConfig.Password })
 	}
+	if parsedJSONConfig.PasswordSecretRef != nil {
+		setLoaded("password-secret-ref", "passwordSecretRef", func() {
+			programOptions.passwordSecretRef = strings.TrimSpace(*parsedJSONConfig.PasswordSecretRef)
+		})
+	}
 	keyInputs := collectNonEmptyConfigValues(
 		configEntry{name: "key", value: parsedJSONConfig.Key},
 		configEntry{name: "pubkey", value: parsedJSONConfig.PubKey},
@@ -388,6 +394,12 @@ func applyDotEnvConfigFileWithMetadata(programOptions *options, providedFlagName
 	}
 	if passwordValue, ok := parsedEnvValues["PASSWORD"]; ok {
 		_ = setLoaded("password", "password", func() error { programOptions.password = passwordValue; return nil })
+	}
+	if passwordSecretRefValue, ok := parsedEnvValues["PASSWORD_SECRET_REF"]; ok {
+		_ = setLoaded("password-secret-ref", "passwordSecretRef", func() error {
+			programOptions.passwordSecretRef = strings.TrimSpace(passwordSecretRefValue)
+			return nil
+		})
 	}
 	keyInputs := collectNonEmptyDotEnvValues(parsedEnvValues, "KEY", "PUBKEY", "PUBKEY_FILE")
 	if len(keyInputs) > 1 {
@@ -600,6 +612,10 @@ func configFields() []configField {
 		}},
 		{key: "password", label: "SSH Password", prompt: "Enter updated SSH password (leave empty to clear): ", kind: "password", passwordInput: true, get: func(optionsValue *options) string { return optionsValue.password }, set: func(optionsValue *options, value string) error {
 			optionsValue.password = strings.TrimSpace(value)
+			return nil
+		}},
+		{key: "passwordSecretRef", label: "Password Secret Ref", prompt: "Enter updated password secret reference (leave empty to clear): ", kind: "text", get: func(optionsValue *options) string { return optionsValue.passwordSecretRef }, set: func(optionsValue *options, value string) error {
+			optionsValue.passwordSecretRef = strings.TrimSpace(value)
 			return nil
 		}},
 		{key: "keyInput", label: "Public Key Input", prompt: "Enter updated key input (public key text or key file path, leave empty to clear): ", kind: "publickey", get: func(optionsValue *options) string { return optionsValue.keyInput }, set: func(optionsValue *options, value string) error {

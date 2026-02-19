@@ -32,6 +32,7 @@ type options struct {
 	serversFile           string
 	user                  string
 	password              string
+	passwordSecretRef     string
 	keyInput              string
 	jsonFile              string
 	envFile               string

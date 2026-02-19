@@ -107,7 +107,7 @@ app02.internal:2222
 {
   "servers": "app01,app02:2222",
   "user": "deploy",
-  "password": "replace-with-your-real-password",
+  "password_secret_ref": "bw://replace-with-your-secret-id",
   "key": "~/.ssh/id_ed25519.pub",
   "port": 22,
   "timeout": 10,
@@ -127,7 +127,7 @@ app02.internal:2222
 ```dotenv
 SERVERS=app01,app02:2222
 USER=deploy
-PASSWORD=replace-with-your-real-password
+PASSWORD_SECRET_REF=bw://replace-with-your-secret-id
 KEY=~/.ssh/id_ed25519.pub
 PORT=22
 TIMEOUT=10
@@ -144,6 +144,53 @@ Config discovery and review happen before any keys are pushed:
 - When either `config.json` or `.env` is detected next to the binary (or provided via `--json`/`--env`), the tool asks which one to use and loads only that source.
 - The selection flow requires an interactive terminal because the tool then asks you to confirm or replace every loaded field before it runs; sensitive fields such as the password are masked (only a short prefix is shown) so you can verify without exposing the secret.
 - CLI flags keep taking priority over config values, making it easy to override a template for a single run.
+
+## Optional Secret References
+
+- Use `PASSWORD_SECRET_REF` (`.env`) or `password_secret_ref` (`config.json`) to avoid storing plaintext SSH passwords.
+- Bitwarden references are supported via `bw://...`, `bw:...`, or `bitwarden://...`.
+- The app tries Bitwarden providers in this order:
+  1. `bw get secret <id> --raw`
+  2. `bws secret get <id>`
+- Secret provider command calls are timeout-bounded to avoid hanging runs.
+- `bws` responses must be valid JSON containing a non-empty `value` field.
+- If a secret reference is provided and cannot be resolved, the run exits with an error.
+- For backward compatibility, `PASSWORD` / `password` still work.
+
+## Adding Secret Providers
+
+Secret resolution is provider-based and extensible.
+
+1. Implement the provider interface in `secrets/providers/<name>/provider_<name>.go` (for example `secrets/providers/aws/provider_aws.go`):
+
+```go
+type Provider interface {
+	Name() string
+	Supports(ref string) bool
+	Resolve(ref string) (string, error)
+}
+```
+
+2. Register the provider from its package using `init()` + `secrets.RegisterProvider(...)`.
+3. Add a blank import in `secrets/providers/all/all.go` so the provider package is linked into the binary.
+
+Provider files can be split by concern for easier maintenance (recommended for non-trivial providers):
+- `provider_<name>.go` (type + `Supports` + `Resolve` entrypoint)
+- `provider_<name>_parse.go` (ref parsing/validation)
+- `provider_<name>_cli.go` or `provider_<name>_sdk.go` (integration logic)
+  Put these files under `secrets/providers/<name>/`.
+
+4. Define a stable ref scheme for your provider so `Supports(ref)` can route correctly, for example:
+   - `aws-sm://...`
+   - `vault://...`
+   - `gcp-sm://...`
+
+5. Return clear errors from `Resolve` (missing auth, missing secret, invalid ref, etc.) so failures are actionable.
+
+6. Add tests in `secrets/resolver_test.go` and provider-specific tests such as `secrets/providers/<name>/provider_<name>_test.go` for:
+   - supported vs unsupported refs
+   - success resolution
+   - provider failure paths
 
 ## Config selection behavior
 
@@ -170,7 +217,7 @@ This review flow requires an interactive terminal session when a config file is 
 - Secure mode is default: host keys are checked against `known_hosts`.
 - Unknown hosts are handled interactively (trust prompt + persist on approval), similar to OpenSSH.
 - Use `--insecure` only for temporary testing.
-- Use config files or the interactive password prompt for password input.
+- Prefer `PASSWORD_SECRET_REF` / `password_secret_ref` over plaintext password values.
 - Ensure the public key input contains exactly one valid authorized key line.
 
 ## Exit Codes

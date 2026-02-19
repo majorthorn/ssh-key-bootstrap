@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/ssh"
+	"vibe-ssh-lift/secrets"
 )
 
 // TestNormalizeHost verifies ports/default handling across host inputs.
@@ -60,6 +61,56 @@ func TestResolveHostsNoInput(testContext *testing.T) {
 
 	if _, resolveErr := resolveHosts("", "", "", 22); resolveErr == nil {
 		testContext.Fatalf("expected error without hosts")
+	}
+}
+
+// TestDefaultSecretProvidersRegistered guards the side-effect provider bootstrap wiring.
+func TestDefaultSecretProvidersRegistered(testContext *testing.T) {
+	testContext.Parallel()
+
+	if len(secrets.DefaultProviders()) == 0 {
+		testContext.Fatalf("expected at least one registered default secret provider")
+	}
+}
+
+// TestValidateOptionsPasswordSecretRefResolves ensures secret refs can hydrate password input.
+func TestValidateOptionsPasswordSecretRefResolves(testContext *testing.T) {
+	testContext.Parallel()
+
+	originalResolver := resolvePasswordFromSecretRef
+	resolvePasswordFromSecretRef = func(secretRef string) (string, error) {
+		if secretRef != "bw://ssh-prod-password" {
+			testContext.Fatalf("unexpected secret ref: %q", secretRef)
+		}
+		return "resolved-password", nil
+	}
+	testContext.Cleanup(func() { resolvePasswordFromSecretRef = originalResolver })
+
+	programOptions := &options{
+		port:              defaultSSHPort,
+		timeoutSec:        defaultTimeoutSeconds,
+		passwordSecretRef: "bw://ssh-prod-password",
+	}
+	if validateErr := validateOptions(programOptions); validateErr != nil {
+		testContext.Fatalf("validate options: %v", validateErr)
+	}
+	if programOptions.password != "resolved-password" {
+		testContext.Fatalf("password was not resolved from secret ref")
+	}
+}
+
+// TestValidateOptionsPasswordSecretRefConflict ensures direct password and secret refs are mutually exclusive.
+func TestValidateOptionsPasswordSecretRefConflict(testContext *testing.T) {
+	testContext.Parallel()
+
+	programOptions := &options{
+		port:              defaultSSHPort,
+		timeoutSec:        defaultTimeoutSeconds,
+		password:          "plaintext",
+		passwordSecretRef: "bw://ssh-prod-password",
+	}
+	if validateErr := validateOptions(programOptions); validateErr == nil {
+		testContext.Fatalf("expected conflict error")
 	}
 }
 
@@ -227,6 +278,7 @@ func TestApplyJSONConfigFile(testContext *testing.T) {
   "servers_file": "./json-servers.txt",
   "user": "json-user",
   "password": "json-password",
+  "password_secret_ref": "bw://ssh-prod-password",
   "key": "ssh-ed25519 AAAAJSON",
   "port": 2200,
   "timeout": 35,
@@ -264,6 +316,9 @@ func TestApplyJSONConfigFile(testContext *testing.T) {
 	if programOptions.password != "json-password" {
 		testContext.Fatalf("password not loaded from json config")
 	}
+	if programOptions.passwordSecretRef != "bw://ssh-prod-password" {
+		testContext.Fatalf("password secret ref not loaded from json config")
+	}
 	if programOptions.keyInput != "ssh-ed25519 AAAAJSON" {
 		testContext.Fatalf("key input not loaded from json config")
 	}
@@ -288,6 +343,7 @@ SERVERS=env-a,env-b
 SERVERS_FILE=./env-servers.txt
 export USER=env-user
 PASSWORD='env password'
+PASSWORD_SECRET_REF=bw://ssh-prod-password
 KEY="ssh-ed25519 AAAAENV"
 PORT=2300 # inline comment
 TIMEOUT=40
@@ -320,6 +376,9 @@ KNOWN_HOSTS=~/.ssh/env_known_hosts
 	}
 	if programOptions.password != "env password" {
 		testContext.Fatalf("password not loaded from .env config")
+	}
+	if programOptions.passwordSecretRef != "bw://ssh-prod-password" {
+		testContext.Fatalf("password secret ref not loaded from .env config")
 	}
 	if programOptions.keyInput != "ssh-ed25519 AAAAENV" {
 		testContext.Fatalf("key input not loaded from .env config")

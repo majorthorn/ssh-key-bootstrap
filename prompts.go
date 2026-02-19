@@ -8,8 +8,14 @@ import (
 	"os"
 	"strings"
 
+	"vibe-ssh-lift/secrets"
+
 	"golang.org/x/term"
 )
+
+var resolvePasswordFromSecretRef = func(secretRef string) (string, error) {
+	return secrets.ResolveSecretReference(secretRef, secrets.DefaultProviders())
+}
 
 func validateOptions(programOptions *options) error {
 	if programOptions.port < 1 || programOptions.port > 65535 {
@@ -17,6 +23,16 @@ func validateOptions(programOptions *options) error {
 	}
 	if programOptions.timeoutSec <= 0 {
 		return errors.New("timeout must be greater than zero")
+	}
+	if strings.TrimSpace(programOptions.password) != "" && strings.TrimSpace(programOptions.passwordSecretRef) != "" {
+		return errors.New("use either PASSWORD/password or PASSWORD_SECRET_REF/password_secret_ref, not both")
+	}
+	if strings.TrimSpace(programOptions.password) == "" && strings.TrimSpace(programOptions.passwordSecretRef) != "" {
+		resolvedPassword, err := resolvePasswordFromSecretRef(programOptions.passwordSecretRef)
+		if err != nil {
+			return fmt.Errorf("resolve password secret reference: %w", err)
+		}
+		programOptions.password = resolvedPassword
 	}
 	return nil
 }
