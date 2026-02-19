@@ -147,18 +147,31 @@ func appendKnownHost(path, hostname string, key ssh.PublicKey) error {
 }
 
 func addAuthorizedKey(hostAddress, publicKey string, clientConfig *ssh.ClientConfig) error {
+	return addAuthorizedKeyWithStatus(hostAddress, publicKey, clientConfig, nil)
+}
+
+func addAuthorizedKeyWithStatus(hostAddress, publicKey string, clientConfig *ssh.ClientConfig, logf func(format string, args ...any)) error {
+	if logf != nil {
+		logf("Connecting over SSH...")
+	}
 	client, err := ssh.Dial("tcp", hostAddress, clientConfig)
 	if err != nil {
 		return fmt.Errorf("ssh dial: %w", err)
 	}
 	defer client.Close()
 
+	if logf != nil {
+		logf("Connected. Opening remote session...")
+	}
 	session, err := client.NewSession()
 	if err != nil {
 		return fmt.Errorf("create session: %w", err)
 	}
 	defer session.Close()
 
+	if logf != nil {
+		logf("Applying authorized_keys update...")
+	}
 	session.Stdin = strings.NewReader(publicKey + "\n")
 	commandOutput, err := session.CombinedOutput(normalizeLF(addAuthorizedKeyScript))
 	if err != nil {
@@ -167,6 +180,9 @@ func addAuthorizedKey(hostAddress, publicKey string, clientConfig *ssh.ClientCon
 			return err
 		}
 		return fmt.Errorf("%w: %s", err, outputMessage)
+	}
+	if logf != nil {
+		logf("Remote command completed.")
 	}
 	return nil
 }
@@ -271,25 +287,33 @@ func normalizeHost(rawHost string, defaultPort int) (string, error) {
 	return net.JoinHostPort(rawHost, strconv.Itoa(defaultPort)), nil
 }
 
-func resolvePublicKey(inlinePublicKey, publicKeyFile string) (string, error) {
-	if strings.TrimSpace(inlinePublicKey) != "" && strings.TrimSpace(publicKeyFile) != "" {
-		return "", errors.New("use either -pubkey or -pubkey-file, not both")
-	}
-	if strings.TrimSpace(inlinePublicKey) == "" && strings.TrimSpace(publicKeyFile) == "" {
+func resolvePublicKey(keyInput string) (string, error) {
+	trimmedInput := strings.TrimSpace(keyInput)
+	if trimmedInput == "" {
 		return "", errors.New("public key is required")
 	}
 
-	var rawKeyInput string
-	if strings.TrimSpace(publicKeyFile) != "" {
-		bytes, err := os.ReadFile(publicKeyFile)
-		if err != nil {
-			return "", fmt.Errorf("read pubkey file: %w", err)
-		}
-		rawKeyInput = string(bytes)
-	} else {
-		rawKeyInput = inlinePublicKey
+	inlineKey, inlineErr := parsePublicKeyFromRawInput(trimmedInput)
+	if inlineErr == nil {
+		return inlineKey, nil
 	}
 
+	path, pathErr := expandHomePath(trimmedInput)
+	if pathErr != nil {
+		path = trimmedInput
+	}
+	fileBytes, readErr := os.ReadFile(path)
+	if readErr != nil {
+		return "", fmt.Errorf("invalid --key value: expected a public key or readable file path %q: %w", trimmedInput, readErr)
+	}
+	publicKey, parseErr := parsePublicKeyFromRawInput(string(fileBytes))
+	if parseErr != nil {
+		return "", fmt.Errorf("invalid public key in file %q: %w", path, parseErr)
+	}
+	return publicKey, nil
+}
+
+func parsePublicKeyFromRawInput(rawKeyInput string) (string, error) {
 	extractedKey, err := extractSingleKey(rawKeyInput)
 	if err != nil {
 		return "", err

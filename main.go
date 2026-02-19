@@ -32,9 +32,7 @@ type options struct {
 	serversFile           string
 	user                  string
 	password              string
-	passwordEnv           string
-	pubKey                string
-	pubKeyFile            string
+	keyInput              string
 	jsonFile              string
 	envFile               string
 	port                  int
@@ -69,28 +67,35 @@ func run() error {
 	programOptions := parseFlags()
 	providedFlagNames := collectProvidedFlagNames()
 
+	fmt.Println("[INFO] Loading configuration...")
 	if err := applyConfigFiles(programOptions, providedFlagNames); err != nil {
 		return fail(2, "%w", err)
 	}
+	fmt.Println("[INFO] Validating options...")
 	if err := validateOptions(programOptions); err != nil {
 		return fail(2, "%w", err)
 	}
 
 	inputReader := bufio.NewReader(os.Stdin)
+	fmt.Println("[INFO] Collecting missing inputs...")
 	if err := fillMissingInputs(inputReader, programOptions); err != nil {
 		return fail(2, "%w", err)
 	}
 
+	fmt.Println("[INFO] Resolving target hosts...")
 	hosts, err := resolveHosts(programOptions.server, programOptions.servers, programOptions.serversFile, programOptions.port)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
+	fmt.Printf("[INFO] %d host(s) queued.\n", len(hosts))
 
-	publicKey, err := resolvePublicKey(programOptions.pubKey, programOptions.pubKeyFile)
+	fmt.Println("[INFO] Resolving public key...")
+	publicKey, err := resolvePublicKey(programOptions.keyInput)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
 
+	fmt.Println("[INFO] Building SSH client configuration...")
 	clientConfig, err := buildSSHConfig(programOptions)
 	if err != nil {
 		return fail(2, "%w", err)
@@ -98,7 +103,10 @@ func run() error {
 
 	failures := 0
 	for _, host := range hosts {
-		if err := addAuthorizedKey(host, publicKey, clientConfig); err != nil {
+		fmt.Printf("[INFO] [%s] Starting...\n", host)
+		if err := addAuthorizedKeyWithStatus(host, publicKey, clientConfig, func(format string, args ...any) {
+			fmt.Printf("[INFO] [%s] %s\n", host, fmt.Sprintf(format, args...))
+		}); err != nil {
 			failures++
 			fmt.Printf("[FAIL] %s: %v\n", host, err)
 			continue
@@ -117,54 +125,59 @@ func parseFlags() *options {
 	normalizeHelpArg()
 
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options]\n\n", os.Args[0])
-		fmt.Fprintln(flag.CommandLine.Output(), "Options:")
-		flag.PrintDefaults()
+		output := flag.CommandLine.Output()
+		fmt.Fprintf(output, "Usage: %s [OPTIONS]\n\n", os.Args[0])
+		fmt.Fprintln(output, "Target Hosts:")
+		fmt.Fprintln(output, "  --host, -s <hosts>         Comma-separated hosts (host or host:port)")
+		fmt.Fprintln(output, "  --hosts-file, -f <path>    File with one host per line")
+		fmt.Fprintln(output)
+		fmt.Fprintln(output, "Authentication:")
+		fmt.Fprintln(output, "  --user, -u <name>          SSH username")
+		fmt.Fprintln(output)
+		fmt.Fprintln(output, "Key Input:")
+		fmt.Fprintln(output, "  --key, -k <value>          Public key text or public key file path")
+		fmt.Fprintln(output)
+		fmt.Fprintln(output, "Config:")
+		fmt.Fprintln(output, "  --json, -j <path>          JSON config file")
+		fmt.Fprintln(output, "  --env, -d <path>           .env config file")
+		fmt.Fprintln(output, "  --skip-review, -r          Skip interactive config review")
+		fmt.Fprintln(output)
+		fmt.Fprintln(output, "Connection:")
+		fmt.Fprintf(output, "  --port, -p <n>             Default SSH port (default: %d)\n", defaultSSHPort)
+		fmt.Fprintf(output, "  --timeout, -t <sec>        SSH timeout seconds (default: %d)\n", defaultTimeoutSeconds)
+		fmt.Fprintf(output, "  --known, -o <path>         known_hosts path (default: %s)\n", defaultKnownHostsPath)
+		fmt.Fprintln(output, "  --insecure, -i             Disable host key verification (unsafe)")
+		fmt.Fprintln(output)
+		fmt.Fprintln(output, "Help:")
+		fmt.Fprintln(output, "  --help, -h                 Show this help")
 	}
 
-	flag.StringVar(&programOptions.server, "server", "", "Hosts (host or host:port, comma-separated)")
-	flag.StringVar(&programOptions.server, "host", "", "Alias for -server")
-	flag.StringVar(&programOptions.server, "s", "", "Alias for -server")
-	flag.StringVar(&programOptions.serversFile, "servers-file", "", "File with one server per line")
-	flag.StringVar(&programOptions.serversFile, "hosts-file", "", "Alias for -servers-file")
-	flag.StringVar(&programOptions.serversFile, "f", "", "Alias for -servers-file")
+	flag.StringVar(&programOptions.server, "host", "", "Comma-separated hosts")
+	flag.StringVar(&programOptions.server, "s", "", "Short for --host")
+	flag.StringVar(&programOptions.serversFile, "hosts-file", "", "Path to hosts file")
+	flag.StringVar(&programOptions.serversFile, "f", "", "Short for --hosts-file")
 
 	flag.StringVar(&programOptions.user, "user", "", "SSH username")
-	flag.StringVar(&programOptions.user, "u", "", "Alias for -user")
-	flag.StringVar(&programOptions.password, "password", "", "SSH password (less secure than prompt)")
-	flag.StringVar(&programOptions.password, "pass", "", "Alias for -password")
-	flag.StringVar(&programOptions.password, "w", "", "Alias for -password")
-	flag.StringVar(&programOptions.passwordEnv, "password-env", "", "Environment variable containing SSH password")
-	flag.StringVar(&programOptions.passwordEnv, "pass-env", "", "Alias for -password-env")
-	flag.StringVar(&programOptions.passwordEnv, "e", "", "Alias for -password-env")
+	flag.StringVar(&programOptions.user, "u", "", "Short for --user")
 
-	flag.StringVar(&programOptions.pubKey, "pubkey", "", "Public key text (e.g. ssh-ed25519 AAAA...)")
-	flag.StringVar(&programOptions.pubKey, "key", "", "Alias for -pubkey")
-	flag.StringVar(&programOptions.pubKey, "k", "", "Alias for -pubkey")
-	flag.StringVar(&programOptions.pubKeyFile, "pubkey-file", "", "Path to public key file")
-	flag.StringVar(&programOptions.pubKeyFile, "key-file", "", "Alias for -pubkey-file")
-	flag.StringVar(&programOptions.pubKeyFile, "K", "", "Alias for -pubkey-file")
-	flag.StringVar(&programOptions.jsonFile, "json-file", "", "Path to JSON config file")
-	flag.StringVar(&programOptions.jsonFile, "json", "", "Alias for -json-file")
-	flag.StringVar(&programOptions.jsonFile, "j", "", "Alias for -json-file")
-	flag.StringVar(&programOptions.envFile, "env-file", "", "Path to .env config file")
-	flag.StringVar(&programOptions.envFile, "env", "", "Alias for -env-file")
-	flag.StringVar(&programOptions.envFile, "d", "", "Alias for -env-file")
-	flag.BoolVar(&programOptions.skipConfigReview, "skip-config-review", false, "Skip interactive review of values loaded from config files")
-	flag.BoolVar(&programOptions.skipConfigReview, "skip-review", false, "Alias for -skip-config-review")
-	flag.BoolVar(&programOptions.skipConfigReview, "r", false, "Alias for -skip-config-review")
+	flag.StringVar(&programOptions.keyInput, "key", "", "Public key text or public key file path")
+	flag.StringVar(&programOptions.keyInput, "k", "", "Short for --key")
+	flag.StringVar(&programOptions.jsonFile, "json", "", "Path to JSON config file")
+	flag.StringVar(&programOptions.jsonFile, "j", "", "Short for --json")
+	flag.StringVar(&programOptions.envFile, "env", "", "Path to .env config file")
+	flag.StringVar(&programOptions.envFile, "d", "", "Short for --env")
+	flag.BoolVar(&programOptions.skipConfigReview, "skip-review", false, "Skip config review prompts")
+	flag.BoolVar(&programOptions.skipConfigReview, "r", false, "Short for --skip-review")
 
 	flag.IntVar(&programOptions.port, "port", defaultSSHPort, "Default SSH port when not specified in server entry")
-	flag.IntVar(&programOptions.port, "p", defaultSSHPort, "Alias for -port")
+	flag.IntVar(&programOptions.port, "p", defaultSSHPort, "Short for --port")
 	flag.IntVar(&programOptions.timeoutSec, "timeout", defaultTimeoutSeconds, "SSH timeout in seconds")
-	flag.IntVar(&programOptions.timeoutSec, "t", defaultTimeoutSeconds, "Alias for -timeout")
+	flag.IntVar(&programOptions.timeoutSec, "t", defaultTimeoutSeconds, "Short for --timeout")
 
-	flag.BoolVar(&programOptions.insecureIgnoreHostKey, "insecure-ignore-host-key", false, "Disable host key verification (unsafe)")
-	flag.BoolVar(&programOptions.insecureIgnoreHostKey, "insecure", false, "Alias for -insecure-ignore-host-key")
-	flag.BoolVar(&programOptions.insecureIgnoreHostKey, "i", false, "Alias for -insecure-ignore-host-key")
-	flag.StringVar(&programOptions.knownHosts, "known-hosts", defaultKnownHostsPath, "Path to known_hosts file")
-	flag.StringVar(&programOptions.knownHosts, "known", defaultKnownHostsPath, "Alias for -known-hosts")
-	flag.StringVar(&programOptions.knownHosts, "o", defaultKnownHostsPath, "Alias for -known-hosts")
+	flag.BoolVar(&programOptions.insecureIgnoreHostKey, "insecure", false, "Disable host key verification (unsafe)")
+	flag.BoolVar(&programOptions.insecureIgnoreHostKey, "i", false, "Short for --insecure")
+	flag.StringVar(&programOptions.knownHosts, "known", defaultKnownHostsPath, "Path to known_hosts file")
+	flag.StringVar(&programOptions.knownHosts, "o", defaultKnownHostsPath, "Short for --known")
 
 	flag.Parse()
 	return programOptions
@@ -187,14 +200,8 @@ func canonicalFlagName(flagName string) string {
 		"hosts-file":  "servers-file",
 		"f":           "servers-file",
 		"u":           "user",
-		"pass":        "password",
-		"w":           "password",
-		"pass-env":    "password-env",
-		"e":           "password-env",
-		"key":         "pubkey",
-		"k":           "pubkey",
-		"key-file":    "pubkey-file",
-		"K":           "pubkey-file",
+		"key":         "key",
+		"k":           "key",
 		"json":        "json-file",
 		"j":           "json-file",
 		"env":         "env-file",

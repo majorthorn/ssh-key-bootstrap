@@ -18,18 +18,6 @@ func validateOptions(programOptions *options) error {
 	if programOptions.timeoutSec <= 0 {
 		return errors.New("timeout must be greater than zero")
 	}
-	if strings.TrimSpace(programOptions.password) != "" && strings.TrimSpace(programOptions.passwordEnv) != "" {
-		return errors.New("use either -password or -password-env, not both")
-	}
-
-	envName := strings.TrimSpace(programOptions.passwordEnv)
-	if strings.TrimSpace(programOptions.password) == "" && envName != "" {
-		value := strings.TrimSpace(os.Getenv(envName))
-		if value == "" {
-			return fmt.Errorf("environment variable %q is empty or not set", envName)
-		}
-		programOptions.password = value
-	}
 	return nil
 }
 
@@ -59,17 +47,10 @@ func fillMissingInputs(inputReader *bufio.Reader, programOptions *options) error
 		}
 	}
 
-	if strings.TrimSpace(programOptions.pubKey) == "" && strings.TrimSpace(programOptions.pubKeyFile) == "" {
-		programOptions.pubKeyFile, err = promptLine(inputReader, "Public key file path (enter to paste key): ")
+	if strings.TrimSpace(programOptions.keyInput) == "" {
+		programOptions.keyInput, err = promptRequired(inputReader, "Public key text or path to public key file: ")
 		if err != nil {
 			return err
-		}
-		programOptions.pubKeyFile = strings.TrimSpace(programOptions.pubKeyFile)
-		if programOptions.pubKeyFile == "" {
-			programOptions.pubKey, err = promptRequired(inputReader, "Public key text: ")
-			if err != nil {
-				return err
-			}
 		}
 	}
 

@@ -20,7 +20,7 @@ type jsonConfigOptions struct {
 	ServersFile           *string `json:"servers_file"`
 	User                  *string `json:"user"`
 	Password              *string `json:"password"`
-	PasswordEnv           *string `json:"password_env"`
+	Key                   *string `json:"key"`
 	PubKey                *string `json:"pubkey"`
 	PubKeyFile            *string `json:"pubkey_file"`
 	Port                  *int    `json:"port"`
@@ -104,7 +104,7 @@ func resolveConfigSourceFromFlags(programOptions *options, inputReader *bufio.Re
 	}
 	if explicitDotEnvPath != "" && explicitJSONPath != "" {
 		if !isInteractiveSession() {
-			return configSourceSelection{}, false, errors.New("both -env-file and -json-file are set; choose one in an interactive terminal")
+			return configSourceSelection{}, false, errors.New("both --env and --json are set; choose one in an interactive terminal")
 		}
 		choice, err := promptConfigSourceMenu(inputReader, explicitDotEnvPath, explicitJSONPath, false)
 		if err != nil {
@@ -311,14 +311,16 @@ func applyJSONConfigFileWithMetadata(programOptions *options, providedFlagNames 
 	if parsedJSONConfig.Password != nil {
 		setLoaded("password", "password", func() { programOptions.password = *parsedJSONConfig.Password })
 	}
-	if parsedJSONConfig.PasswordEnv != nil {
-		setLoaded("password-env", "passwordEnv", func() { programOptions.passwordEnv = strings.TrimSpace(*parsedJSONConfig.PasswordEnv) })
+	keyInputs := collectNonEmptyConfigValues(
+		configEntry{name: "key", value: parsedJSONConfig.Key},
+		configEntry{name: "pubkey", value: parsedJSONConfig.PubKey},
+		configEntry{name: "pubkey_file", value: parsedJSONConfig.PubKeyFile},
+	)
+	if len(keyInputs) > 1 {
+		return nil, fmt.Errorf("json config must set only one of key/pubkey/pubkey_file")
 	}
-	if parsedJSONConfig.PubKey != nil {
-		setLoaded("pubkey", "pubKey", func() { programOptions.pubKey = *parsedJSONConfig.PubKey })
-	}
-	if parsedJSONConfig.PubKeyFile != nil {
-		setLoaded("pubkey-file", "pubKeyFile", func() { programOptions.pubKeyFile = strings.TrimSpace(*parsedJSONConfig.PubKeyFile) })
+	if len(keyInputs) == 1 {
+		setLoaded("key", "keyInput", func() { programOptions.keyInput = keyInputs[0] })
 	}
 	if parsedJSONConfig.Port != nil {
 		setLoaded("port", "port", func() { programOptions.port = *parsedJSONConfig.Port })
@@ -387,14 +389,12 @@ func applyDotEnvConfigFileWithMetadata(programOptions *options, providedFlagName
 	if passwordValue, ok := parsedEnvValues["PASSWORD"]; ok {
 		_ = setLoaded("password", "password", func() error { programOptions.password = passwordValue; return nil })
 	}
-	if passwordEnvValue, ok := parsedEnvValues["PASSWORD_ENV"]; ok {
-		_ = setLoaded("password-env", "passwordEnv", func() error { programOptions.passwordEnv = strings.TrimSpace(passwordEnvValue); return nil })
+	keyInputs := collectNonEmptyDotEnvValues(parsedEnvValues, "KEY", "PUBKEY", "PUBKEY_FILE")
+	if len(keyInputs) > 1 {
+		return nil, fmt.Errorf(".env must set only one of KEY/PUBKEY/PUBKEY_FILE")
 	}
-	if publicKeyValue, ok := parsedEnvValues["PUBKEY"]; ok {
-		_ = setLoaded("pubkey", "pubKey", func() error { programOptions.pubKey = publicKeyValue; return nil })
-	}
-	if publicKeyFileValue, ok := parsedEnvValues["PUBKEY_FILE"]; ok {
-		_ = setLoaded("pubkey-file", "pubKeyFile", func() error { programOptions.pubKeyFile = strings.TrimSpace(publicKeyFileValue); return nil })
+	if len(keyInputs) == 1 {
+		_ = setLoaded("key", "keyInput", func() error { programOptions.keyInput = keyInputs[0]; return nil })
 	}
 	if portValue, ok := parsedEnvValues["PORT"]; ok {
 		if err := setLoaded("port", "port", func() error {
@@ -477,6 +477,38 @@ func parseDotEnvContent(dotEnvContent string) (map[string]string, error) {
 		return nil, err
 	}
 	return parsedValues, nil
+}
+
+type configEntry struct {
+	name  string
+	value *string
+}
+
+func collectNonEmptyConfigValues(entries ...configEntry) []string {
+	values := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.value == nil {
+			continue
+		}
+		if trimmed := strings.TrimSpace(*entry.value); trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	return values
+}
+
+func collectNonEmptyDotEnvValues(values map[string]string, keys ...string) []string {
+	result := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, exists := values[key]
+		if !exists {
+			continue
+		}
+		if trimmed := strings.TrimSpace(value); trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }
 
 func parseDotEnvValue(rawValue string) (string, error) {
@@ -570,16 +602,8 @@ func configFields() []configField {
 			optionsValue.password = strings.TrimSpace(value)
 			return nil
 		}},
-		{key: "passwordEnv", label: "Password Env Variable", prompt: "Enter updated password environment variable (leave empty to clear): ", kind: "text", get: func(optionsValue *options) string { return optionsValue.passwordEnv }, set: func(optionsValue *options, value string) error {
-			optionsValue.passwordEnv = strings.TrimSpace(value)
-			return nil
-		}},
-		{key: "pubKey", label: "Public Key", prompt: "Enter updated public key text (leave empty to clear): ", kind: "publickey", get: func(optionsValue *options) string { return optionsValue.pubKey }, set: func(optionsValue *options, value string) error {
-			optionsValue.pubKey = strings.TrimSpace(value)
-			return nil
-		}},
-		{key: "pubKeyFile", label: "Public Key File", prompt: "Enter updated public key file path (leave empty to clear): ", kind: "text", get: func(optionsValue *options) string { return optionsValue.pubKeyFile }, set: func(optionsValue *options, value string) error {
-			optionsValue.pubKeyFile = strings.TrimSpace(value)
+		{key: "keyInput", label: "Public Key Input", prompt: "Enter updated key input (public key text or key file path, leave empty to clear): ", kind: "publickey", get: func(optionsValue *options) string { return optionsValue.keyInput }, set: func(optionsValue *options, value string) error {
+			optionsValue.keyInput = strings.TrimSpace(value)
 			return nil
 		}},
 		{key: "port", label: "Default Port", prompt: "Enter updated default port: ", kind: "text", get: func(optionsValue *options) string { return strconv.Itoa(optionsValue.port) }, set: func(optionsValue *options, value string) error {

@@ -131,7 +131,7 @@ func TestResolvePublicKeyInline(testContext *testing.T) {
 	testContext.Parallel()
 
 	inlinePublicKey := generateTestKey(testContext)
-	resolvedPublicKey, resolveErr := resolvePublicKey(inlinePublicKey, "")
+	resolvedPublicKey, resolveErr := resolvePublicKey(inlinePublicKey)
 	if resolveErr != nil {
 		testContext.Fatalf("resolve inline key: %v", resolveErr)
 	}
@@ -151,7 +151,7 @@ func TestResolvePublicKeyFile(testContext *testing.T) {
 		testContext.Fatalf("write key: %v", writeErr)
 	}
 
-	resolvedPublicKey, resolveErr := resolvePublicKey("", publicKeyPath)
+	resolvedPublicKey, resolveErr := resolvePublicKey(publicKeyPath)
 	if resolveErr != nil {
 		testContext.Fatalf("resolve file key: %v", resolveErr)
 	}
@@ -160,12 +160,12 @@ func TestResolvePublicKeyFile(testContext *testing.T) {
 	}
 }
 
-// TestResolvePublicKeyBothSources rejects simultaneous inline and file inputs.
-func TestResolvePublicKeyBothSources(testContext *testing.T) {
+// TestResolvePublicKeyMissingInput ensures missing --key input is rejected.
+func TestResolvePublicKeyMissingInput(testContext *testing.T) {
 	testContext.Parallel()
 
-	if _, resolveErr := resolvePublicKey("key", "file"); resolveErr == nil {
-		testContext.Fatalf("expected error when both sources provided")
+	if _, resolveErr := resolvePublicKey(""); resolveErr == nil {
+		testContext.Fatalf("expected error when key input is empty")
 	}
 }
 
@@ -195,19 +195,16 @@ func TestCanonicalFlagName(testContext *testing.T) {
 	testContext.Parallel()
 
 	testCases := map[string]string{
-		"host":        "server",
-		"s":           "server",
-		"hosts-file":  "servers-file",
-		"pass":        "password",
-		"k":           "pubkey",
-		"K":           "pubkey-file",
-		"j":           "json-file",
-		"d":           "env-file",
-		"r":           "skip-config-review",
-		"i":           "insecure-ignore-host-key",
-		"o":           "known-hosts",
-		"server":      "server",
-		"known-hosts": "known-hosts",
+		"host":       "server",
+		"s":          "server",
+		"hosts-file": "servers-file",
+		"k":          "key",
+		"j":          "json-file",
+		"d":          "env-file",
+		"r":          "skip-config-review",
+		"i":          "insecure-ignore-host-key",
+		"o":          "known-hosts",
+		"known":      "known-hosts",
 	}
 
 	for input, expected := range testCases {
@@ -230,9 +227,7 @@ func TestApplyJSONConfigFile(testContext *testing.T) {
   "servers_file": "./json-servers.txt",
   "user": "json-user",
   "password": "json-password",
-  "password_env": "JSON_PASSWORD",
-  "pubkey": "ssh-ed25519 AAAAJSON",
-  "pubkey_file": "./json-id.pub",
+  "key": "ssh-ed25519 AAAAJSON",
   "port": 2200,
   "timeout": 35,
   "insecure_ignore_host_key": true,
@@ -269,6 +264,9 @@ func TestApplyJSONConfigFile(testContext *testing.T) {
 	if programOptions.password != "json-password" {
 		testContext.Fatalf("password not loaded from json config")
 	}
+	if programOptions.keyInput != "ssh-ed25519 AAAAJSON" {
+		testContext.Fatalf("key input not loaded from json config")
+	}
 	if programOptions.timeoutSec != 35 {
 		testContext.Fatalf("timeout not loaded from json config")
 	}
@@ -290,9 +288,7 @@ SERVERS=env-a,env-b
 SERVERS_FILE=./env-servers.txt
 export USER=env-user
 PASSWORD='env password'
-PASSWORD_ENV=ENV_PASSWORD
-PUBKEY="ssh-ed25519 AAAAENV"
-PUBKEY_FILE=./env-id.pub
+KEY="ssh-ed25519 AAAAENV"
 PORT=2300 # inline comment
 TIMEOUT=40
 INSECURE_IGNORE_HOST_KEY=true
@@ -324,6 +320,9 @@ KNOWN_HOSTS=~/.ssh/env_known_hosts
 	}
 	if programOptions.password != "env password" {
 		testContext.Fatalf("password not loaded from .env config")
+	}
+	if programOptions.keyInput != "ssh-ed25519 AAAAENV" {
+		testContext.Fatalf("key input not loaded from .env config")
 	}
 	if programOptions.port != 2300 {
 		testContext.Fatalf("port not loaded from .env config")

@@ -1,8 +1,8 @@
 {
   "servers": "app01.internal,app02.internal:2222",
   "user": "deploy",
-  "password_env": "SSH_PASSWORD",
-  "pubkey_file": "~/.ssh/id_ed25519.pub",
+  "password": "replace-with-your-real-password",
+  "key": "~/.ssh/id_ed25519.pub",
   "port": 22,
   "timeout": 10,
   "known_hosts": "~/.ssh/known_hosts",

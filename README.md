@@ -26,7 +26,7 @@ go build -o vibe-ssh-lift .
 ## Usage
 
 ```bash
-./vibe-ssh-lift [flags]
+./vibe-ssh-lift [OPTIONS]
 ```
 
 If required values are missing, the tool prompts interactively.
@@ -34,41 +34,37 @@ If no config flag is provided, the tool checks for `.env` and `config.json` in t
 
 ## Flags
 
-- `-server`, `-host`, `-s` Host list (`host` or `host:port`, comma-separated).
-- `-servers-file`, `-hosts-file`, `-f` File with one server per line (`#` comments and blank lines allowed).
-- `-user`, `-u` SSH username.
-- `-password`, `-pass`, `-w` SSH password (less secure than prompt or env var).
-- `-password-env`, `-pass-env`, `-e` Environment variable containing SSH password.
-- `-pubkey`, `-key`, `-k` Public key text (`ssh-ed25519 AAAA...`).
-- `-pubkey-file`, `-key-file`, `-K` Path to public key file.
-- `-json-file`, `-json`, `-j` JSON config file path.
-- `-env-file`, `-env`, `-d` dotenv config file path.
-- `-skip-config-review`, `-skip-review`, `-r` Skip interactive review/edit prompts for config-loaded values.
-- `-port`, `-p` Default SSH port (default: `22`).
-- `-timeout`, `-t` SSH timeout seconds (default: `10`).
-- `-known-hosts`, `-known`, `-o` `known_hosts` file path (default: `~/.ssh/known_hosts`).
-- `-insecure-ignore-host-key`, `-insecure`, `-i` Disable host key verification (unsafe).
-- `-h`, `--help` Show help.
+- `--host`, `-s` Host list (`host` or `host:port`, comma-separated).
+- `--hosts-file`, `-f` File with one server per line (`#` comments and blank lines allowed).
+- `--user`, `-u` SSH username.
+- `--key`, `-k` Public key text (`ssh-ed25519 AAAA...`) or path to a public key file.
+- `--json`, `-j` JSON config file path.
+- `--env`, `-d` dotenv config file path.
+- `--skip-review`, `-r` Skip interactive review/edit prompts for config-loaded values.
+- `--port`, `-p` Default SSH port (default: `22`).
+- `--timeout`, `-t` SSH timeout seconds (default: `10`).
+- `--known`, `-o` `known_hosts` file path (default: `~/.ssh/known_hosts`).
+- `--insecure`, `-i` Disable host key verification (unsafe).
+- `--help`, `-h` Show help.
 
 ## Examples
 
-### Single Host, Key File
+### Single Host, Key File Path via `--key`
 
 ```bash
 ./vibe-ssh-lift \
-  -server 192.168.1.10 \
-  -user deploy \
-  -password-env SSH_PASSWORD \
-  -pubkey-file ~/.ssh/id_ed25519.pub
+  --host 192.168.1.10 \
+  --user deploy \
+  --key ~/.ssh/id_ed25519.pub
 ```
 
 ### Multiple Hosts From File
 
 ```bash
 ./vibe-ssh-lift \
-  -servers-file ./servers.txt \
-  -user deploy \
-  -pubkey-file ~/.ssh/id_ed25519.pub
+  --hosts-file ./servers.txt \
+  --user deploy \
+  --key ~/.ssh/id_ed25519.pub
 ```
 
 `servers.txt` example:
@@ -84,27 +80,25 @@ app02.internal:2222
 
 ```bash
 ./vibe-ssh-lift \
-  -server "host1,host2:2222" \
-  -user deploy \
-  -password-env SSH_PASSWORD \
-  -pubkey "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..."
+  --host "host1,host2:2222" \
+  --user deploy \
+  --key "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI..."
 ```
 
 ### Custom known_hosts Path
 
 ```bash
 ./vibe-ssh-lift \
-  -server host1 \
-  -user deploy \
-  -password-env SSH_PASSWORD \
-  -pubkey-file ~/.ssh/id_ed25519.pub \
-  -known-hosts ./known_hosts
+  --host host1 \
+  --user deploy \
+  --key ~/.ssh/id_ed25519.pub \
+  --known ./known_hosts
 ```
 
 ### JSON Config File
 
 ```bash
-./vibe-ssh-lift -json-file configexamples/config.example.json
+./vibe-ssh-lift --json configexamples/config.example.json
 ```
 
 `configexamples/config.example.json` example:
@@ -113,8 +107,8 @@ app02.internal:2222
 {
   "servers": "app01,app02:2222",
   "user": "deploy",
-  "password_env": "SSH_PASSWORD",
-  "pubkey_file": "~/.ssh/id_ed25519.pub",
+  "password": "replace-with-your-real-password",
+  "key": "~/.ssh/id_ed25519.pub",
   "port": 22,
   "timeout": 10,
   "known_hosts": "~/.ssh/known_hosts",
@@ -125,7 +119,7 @@ app02.internal:2222
 ### .env Config File
 
 ```bash
-./vibe-ssh-lift -env-file configexamples/.env.example
+./vibe-ssh-lift --env configexamples/.env.example
 ```
 
 `configexamples/.env.example` example:
@@ -133,8 +127,8 @@ app02.internal:2222
 ```dotenv
 SERVERS=app01,app02:2222
 USER=deploy
-PASSWORD_ENV=SSH_PASSWORD
-PUBKEY_FILE=~/.ssh/id_ed25519.pub
+PASSWORD=replace-with-your-real-password
+KEY=~/.ssh/id_ed25519.pub
 PORT=22
 TIMEOUT=10
 KNOWN_HOSTS=~/.ssh/known_hosts
@@ -143,11 +137,11 @@ INSECURE_IGNORE_HOST_KEY=false
 
 ## Where to put your configs
 
-Real configs should live outside of Git commits. Keep `configexamples/` full of templates such as the ones above, then copy or rewrite the version you actually use—`config.json` for JSON or `<name>.env` for dotenv—alongside the executable or anywhere else you like. When running `vibe-ssh-lift`, point the tool to them with the matching flags (`-json-file config.json` or `-env-file ./my-prod.env`). Use the examples as a starting point, update the credentials/servers, and add that file to `.gitignore` so it stays private while the template remains tracked.
+Real configs should live outside of Git commits. Keep `configexamples/` full of templates such as the ones above, then copy or rewrite the version you actually use—`config.json` for JSON or `<name>.env` for dotenv—alongside the executable or anywhere else you like. When running `vibe-ssh-lift`, point the tool to them with the matching flags (`--json config.json` or `--env ./my-prod.env`). Use the examples as a starting point, update the credentials/servers, and add that file to `.gitignore` so it stays private while the template remains tracked.
 
 Config discovery and review happen before any keys are pushed:
 
-- When either `config.json` or `.env` is detected next to the binary (or provided via `-json-file`/`-env-file`), the tool asks which one to use and loads only that source.
+- When either `config.json` or `.env` is detected next to the binary (or provided via `--json`/`--env`), the tool asks which one to use and loads only that source.
 - The selection flow requires an interactive terminal because the tool then asks you to confirm or replace every loaded field before it runs; sensitive fields such as the password are masked (only a short prefix is shown) so you can verify without exposing the secret.
 - CLI flags keep taking priority over config values, making it easy to override a template for a single run.
 
@@ -155,9 +149,9 @@ Config discovery and review happen before any keys are pushed:
 
 - If both `.env` and `config.json` are found, the tool shows a menu and asks which one to use for that run.
 - If only one is found, the tool asks whether you want to use it.
-- If both `-env-file` and `-json-file` are set, the tool asks you to choose one and uses only that one.
+- If both `--env` and `--json` are set, the tool asks you to choose one and uses only that one.
 - CLI flags still override matching values from the selected config file.
-- Use `-skip-config-review` to bypass the interactive per-field confirmation step (useful for non-interactive runs).
+- Use `--skip-review` to bypass the interactive per-field confirmation step (useful for non-interactive runs).
 
 ## Config Review Prompt
 
@@ -175,8 +169,8 @@ This review flow requires an interactive terminal session when a config file is 
 
 - Secure mode is default: host keys are checked against `known_hosts`.
 - Unknown hosts are handled interactively (trust prompt + persist on approval), similar to OpenSSH.
-- Use `-insecure-ignore-host-key` only for temporary testing.
-- Prefer `-password-env` or interactive password prompt over `-password`.
+- Use `--insecure` only for temporary testing.
+- Use config files or the interactive password prompt for password input.
 - Ensure the public key input contains exactly one valid authorized key line.
 
 ## Exit Codes
