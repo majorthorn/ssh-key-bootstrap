@@ -15,6 +15,9 @@ var resolvePasswordFromSecretRef = func(secretRef string) (string, error) {
 	return providers.ResolveSecretReference(secretRef, providers.DefaultProviders())
 }
 
+var isTerminalForPasswordPrompt = isTerminal
+var readPasswordForPrompt = readPassword
+
 func validateOptions(programOptions *options) error {
 	if programOptions.Port < 1 || programOptions.Port > 65535 {
 		return errors.New("port must be in range 1..65535")
@@ -88,8 +91,8 @@ func promptPassword(reader *bufio.Reader, label string) (string, error) {
 		outputPrint(label)
 
 		var passwordInput string
-		if isTerminal(os.Stdin) {
-			passwordBytes, err := readPassword(os.Stdin)
+		if isTerminalForPasswordPrompt(os.Stdin) {
+			passwordBytes, err := readPasswordForPrompt(os.Stdin)
 			outputPrintln()
 			if err != nil {
 				return "", err

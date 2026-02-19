@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"crypto/ed25519"
 	"crypto/rand"
+	"errors"
 	"net"
 	"os"
 	"path/filepath"
@@ -208,6 +209,50 @@ func TestResolvePublicKeyMissingInput(testContext *testing.T) {
 	}
 }
 
+// TestResolvePublicKeyInvalidInputPaths validates non-key and malformed file cases.
+func TestResolvePublicKeyInvalidInputPaths(testContext *testing.T) {
+	testContext.Parallel()
+
+	testContext.Run("missing file", func(subTestContext *testing.T) {
+		_, resolveErr := resolvePublicKey("/definitely/missing/public-key.pub")
+		if resolveErr == nil {
+			subTestContext.Fatalf("expected missing-file error")
+		}
+		if !strings.Contains(resolveErr.Error(), "expected a public key or readable file path") {
+			subTestContext.Fatalf("unexpected error: %v", resolveErr)
+		}
+	})
+
+	testContext.Run("invalid key in file", func(subTestContext *testing.T) {
+		tempDirectory := subTestContext.TempDir()
+		invalidPublicKeyPath := filepath.Join(tempDirectory, "invalid.pub")
+		if writeErr := os.WriteFile(invalidPublicKeyPath, []byte("not-a-public-key\n"), 0o600); writeErr != nil {
+			subTestContext.Fatalf("write invalid key file: %v", writeErr)
+		}
+
+		_, resolveErr := resolvePublicKey(invalidPublicKeyPath)
+		if resolveErr == nil {
+			subTestContext.Fatalf("expected invalid-key parse error")
+		}
+		if !strings.Contains(resolveErr.Error(), "invalid public key in file") {
+			subTestContext.Fatalf("unexpected error: %v", resolveErr)
+		}
+	})
+}
+
+// TestParsePublicKeyFromRawInputInvalid ensures malformed authorized key strings fail validation.
+func TestParsePublicKeyFromRawInputInvalid(testContext *testing.T) {
+	testContext.Parallel()
+
+	_, parseErr := parsePublicKeyFromRawInput("not-an-authorized-key")
+	if parseErr == nil {
+		testContext.Fatalf("expected parse error")
+	}
+	if !strings.Contains(parseErr.Error(), "invalid public key format") {
+		testContext.Fatalf("unexpected error: %v", parseErr)
+	}
+}
+
 // TestNormalizeLF ensures CRLF and CR are normalized before remote script execution.
 func TestNormalizeLF(testContext *testing.T) {
 	testContext.Parallel()
@@ -218,6 +263,90 @@ func TestNormalizeLF(testContext *testing.T) {
 	if normalizedValue != expectedValue {
 		testContext.Fatalf("got %q want %q", normalizedValue, expectedValue)
 	}
+}
+
+// TestNormalizeHostInvalidPort validates host:port parsing failures.
+func TestNormalizeHostInvalidPort(testContext *testing.T) {
+	testContext.Parallel()
+
+	_, normalizeErr := normalizeHost("host:not-a-number", 22)
+	if normalizeErr == nil {
+		testContext.Fatalf("expected invalid port error")
+	}
+	if !strings.Contains(normalizeErr.Error(), "invalid port") {
+		testContext.Fatalf("unexpected error: %v", normalizeErr)
+	}
+}
+
+// TestResolveHostsInvalidEntry ensures invalid server entries are rejected early.
+func TestResolveHostsInvalidEntry(testContext *testing.T) {
+	testContext.Parallel()
+
+	_, resolveErr := resolveHosts("", "good-host,bad-host:not-a-port", 22)
+	if resolveErr == nil {
+		testContext.Fatalf("expected invalid server error")
+	}
+	if !strings.Contains(resolveErr.Error(), "invalid server") {
+		testContext.Fatalf("unexpected error: %v", resolveErr)
+	}
+}
+
+// TestEnsureKnownHostsFile verifies path creation and file initialization behavior.
+func TestEnsureKnownHostsFile(testContext *testing.T) {
+	testContext.Parallel()
+
+	testContext.Run("creates parent directories and file", func(subTestContext *testing.T) {
+		knownHostsPath := filepath.Join(subTestContext.TempDir(), "nested", "known_hosts")
+		if ensureErr := ensureKnownHostsFile(knownHostsPath); ensureErr != nil {
+			subTestContext.Fatalf("ensureKnownHostsFile() error = %v", ensureErr)
+		}
+		fileInfo, statErr := os.Stat(knownHostsPath)
+		if statErr != nil {
+			subTestContext.Fatalf("stat known_hosts: %v", statErr)
+		}
+		if fileInfo.IsDir() {
+			subTestContext.Fatalf("known_hosts path %q should be a file", knownHostsPath)
+		}
+	})
+
+	testContext.Run("returns error for directory path", func(subTestContext *testing.T) {
+		knownHostsDir := subTestContext.TempDir()
+		ensureErr := ensureKnownHostsFile(knownHostsDir)
+		if ensureErr == nil {
+			subTestContext.Fatalf("expected ensureKnownHostsFile() error for directory path")
+		}
+	})
+}
+
+// TestAppendKnownHost validates successful append and invalid target errors.
+func TestAppendKnownHost(testContext *testing.T) {
+	testContext.Parallel()
+
+	hostPublicKey := parsePublicKeyFromAuthorizedLine(testContext, generateTestKey(testContext))
+
+	testContext.Run("appends entry to known_hosts", func(subTestContext *testing.T) {
+		knownHostsPath := filepath.Join(subTestContext.TempDir(), "known_hosts")
+		if appendErr := appendKnownHost(knownHostsPath, "example.com:22", hostPublicKey); appendErr != nil {
+			subTestContext.Fatalf("appendKnownHost() error = %v", appendErr)
+		}
+
+		knownHostsBytes, readErr := os.ReadFile(knownHostsPath)
+		if readErr != nil {
+			subTestContext.Fatalf("read known_hosts: %v", readErr)
+		}
+		knownHostsContent := string(knownHostsBytes)
+		if !strings.Contains(knownHostsContent, "example.com") {
+			subTestContext.Fatalf("known_hosts missing hostname: %q", knownHostsContent)
+		}
+	})
+
+	testContext.Run("errors when known_hosts path is a directory", func(subTestContext *testing.T) {
+		knownHostsDir := subTestContext.TempDir()
+		appendErr := appendKnownHost(knownHostsDir, "example.com:22", hostPublicKey)
+		if appendErr == nil {
+			subTestContext.Fatalf("expected appendKnownHost() error")
+		}
+	})
 }
 
 // TestAddAuthorizedKeyScriptLFOnly guards against carriage returns in remote shell commands.
@@ -438,6 +567,50 @@ func TestBuildHostKeyCallbackMismatchSkipsPrompt(testContext *testing.T) {
 	}
 	if promptCalls != 0 {
 		testContext.Fatalf("expected no prompt for mismatched host key, got %d", promptCalls)
+	}
+}
+
+// TestBuildHostKeyCallbackUnknownHostPromptError verifies prompt failures propagate.
+func TestBuildHostKeyCallbackUnknownHostPromptError(testContext *testing.T) {
+	tempDirectory := testContext.TempDir()
+	knownHostsPath := filepath.Join(tempDirectory, "known_hosts")
+	hostPublicKey := parsePublicKeyFromAuthorizedLine(testContext, generateTestKey(testContext))
+
+	originalPrompter := confirmUnknownHost
+	confirmUnknownHost = func(hostname, path string, key ssh.PublicKey) (bool, error) {
+		return false, errors.New("prompt failed")
+	}
+	testContext.Cleanup(func() { confirmUnknownHost = originalPrompter })
+
+	hostKeyCallback, callbackErr := buildHostKeyCallback(false, knownHostsPath)
+	if callbackErr != nil {
+		testContext.Fatalf("build host key callback: %v", callbackErr)
+	}
+
+	remoteAddress := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 22}
+	callbackErr = hostKeyCallback("example.com:22", remoteAddress, hostPublicKey)
+	if callbackErr == nil {
+		testContext.Fatalf("expected prompt failure")
+	}
+	if !strings.Contains(callbackErr.Error(), "prompt failed") {
+		testContext.Fatalf("unexpected error: %v", callbackErr)
+	}
+}
+
+// TestBuildHostKeyCallbackInvalidKnownHostsFile ensures malformed known_hosts content fails callback setup.
+func TestBuildHostKeyCallbackInvalidKnownHostsFile(testContext *testing.T) {
+	tempDirectory := testContext.TempDir()
+	knownHostsPath := filepath.Join(tempDirectory, "known_hosts")
+	if writeErr := os.WriteFile(knownHostsPath, []byte("invalid known hosts line\n"), 0o600); writeErr != nil {
+		testContext.Fatalf("seed malformed known_hosts file: %v", writeErr)
+	}
+
+	_, callbackErr := buildHostKeyCallback(false, knownHostsPath)
+	if callbackErr == nil {
+		testContext.Fatalf("expected known_hosts parse error")
+	}
+	if !strings.Contains(callbackErr.Error(), "load known_hosts") {
+		testContext.Fatalf("unexpected error: %v", callbackErr)
 	}
 }
 

@@ -14,11 +14,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/sys/unix"
 )
 
 func setCommandLineForTest(t *testing.T, args []string) {
@@ -56,6 +56,96 @@ func captureWriters(t *testing.T) (*bytes.Buffer, *bytes.Buffer) {
 	})
 
 	return outputBuffer, errorBuffer
+}
+
+func stubPromptPasswordHooks(
+	t *testing.T,
+	isTerminalStub func(*os.File) bool,
+	readPasswordStub func(*os.File) ([]byte, error),
+) {
+	t.Helper()
+
+	originalIsTerminal := isTerminalForPasswordPrompt
+	originalReadPassword := readPasswordForPrompt
+	isTerminalForPasswordPrompt = isTerminalStub
+	readPasswordForPrompt = readPasswordStub
+
+	t.Cleanup(func() {
+		isTerminalForPasswordPrompt = originalIsTerminal
+		readPasswordForPrompt = originalReadPassword
+	})
+}
+
+func stubTrustPromptHooks(
+	t *testing.T,
+	isTerminalStub func(*os.File) bool,
+	promptLineStub func(*bufio.Reader, string) (string, error),
+) {
+	t.Helper()
+
+	originalIsTerminal := isTerminalForTrustPrompt
+	originalPromptLine := promptLineForTrustPrompt
+	isTerminalForTrustPrompt = isTerminalStub
+	promptLineForTrustPrompt = promptLineStub
+
+	t.Cleanup(func() {
+		isTerminalForTrustPrompt = originalIsTerminal
+		promptLineForTrustPrompt = originalPromptLine
+	})
+}
+
+func stubSSHDialHook(
+	t *testing.T,
+	dialStub func(string, string, *ssh.ClientConfig) (*ssh.Client, error),
+) {
+	t.Helper()
+
+	originalSSHDial := sshDial
+	sshDial = dialStub
+	t.Cleanup(func() {
+		sshDial = originalSSHDial
+	})
+}
+
+func newSocketPair(t *testing.T) (net.Conn, net.Conn, func()) {
+	t.Helper()
+
+	fileDescriptors, err := unix.Socketpair(unix.AF_UNIX, unix.SOCK_STREAM, 0)
+	if err != nil {
+		t.Skipf("unix socketpair is unavailable in this environment: %v", err)
+	}
+
+	clientFile := os.NewFile(uintptr(fileDescriptors[0]), "client-sock")
+	serverFile := os.NewFile(uintptr(fileDescriptors[1]), "server-sock")
+
+	clientConn, err := net.FileConn(clientFile)
+	if err != nil {
+		_ = clientFile.Close()
+		_ = serverFile.Close()
+		if strings.Contains(err.Error(), "operation not permitted") {
+			t.Skipf("socketpair connections are unavailable in this environment: %v", err)
+		}
+		t.Fatalf("create client net.Conn from socketpair: %v", err)
+	}
+	serverConn, err := net.FileConn(serverFile)
+	if err != nil {
+		_ = clientConn.Close()
+		_ = clientFile.Close()
+		_ = serverFile.Close()
+		if strings.Contains(err.Error(), "operation not permitted") {
+			t.Skipf("socketpair connections are unavailable in this environment: %v", err)
+		}
+		t.Fatalf("create server net.Conn from socketpair: %v", err)
+	}
+
+	_ = clientFile.Close()
+	_ = serverFile.Close()
+
+	cleanup := func() {
+		_ = clientConn.Close()
+		_ = serverConn.Close()
+	}
+	return clientConn, serverConn, cleanup
 }
 
 type alwaysFailWriter struct{}
@@ -382,6 +472,48 @@ func TestPromptPasswordReadsFromReaderWhenNotTerminal(t *testing.T) {
 	}
 	if strings.Count(output, "Value is required.") != 1 {
 		t.Fatalf("expected one validation message, output=%q", output)
+	}
+}
+
+func TestPromptPasswordUsesTerminalReadPasswordWhenAvailable(t *testing.T) {
+	outputBuffer, _ := captureWriters(t)
+	stubPromptPasswordHooks(
+		t,
+		func(*os.File) bool { return true },
+		func(*os.File) ([]byte, error) { return []byte("terminal-secret"), nil },
+	)
+
+	value, err := promptPassword(bufio.NewReader(strings.NewReader("unused")), "SSH password: ")
+	if err != nil {
+		t.Fatalf("promptPassword() error = %v", err)
+	}
+	if value != "terminal-secret" {
+		t.Fatalf("promptPassword() value = %q, want %q", value, "terminal-secret")
+	}
+
+	if got := outputBuffer.String(); got != "SSH password: \n" {
+		t.Fatalf("unexpected prompt output: %q", got)
+	}
+}
+
+func TestPromptPasswordTerminalReadError(t *testing.T) {
+	outputBuffer, _ := captureWriters(t)
+	stubPromptPasswordHooks(
+		t,
+		func(*os.File) bool { return true },
+		func(*os.File) ([]byte, error) { return nil, errors.New("terminal read failed") },
+	)
+
+	_, err := promptPassword(bufio.NewReader(strings.NewReader("unused")), "SSH password: ")
+	if err == nil {
+		t.Fatalf("expected promptPassword() error")
+	}
+	if !strings.Contains(err.Error(), "terminal read failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got := outputBuffer.String(); got != "SSH password: \n" {
+		t.Fatalf("unexpected prompt output: %q", got)
 	}
 }
 
@@ -769,9 +901,11 @@ func TestBuildSSHConfigKnownHostsPathError(t *testing.T) {
 }
 
 func TestPromptTrustUnknownHostNonInteractive(t *testing.T) {
-	if isTerminal(os.Stdin) {
-		t.Skip("stdin is a terminal; this test exercises the non-interactive rejection path")
-	}
+	stubTrustPromptHooks(
+		t,
+		func(*os.File) bool { return false },
+		func(*bufio.Reader, string) (string, error) { return "", nil },
+	)
 
 	hostPublicKey := parsePublicKeyFromAuthorizedLine(t, generateTestKey(t))
 	_, err := promptTrustUnknownHost("example.com:22", "/tmp/known_hosts", hostPublicKey)
@@ -783,10 +917,84 @@ func TestPromptTrustUnknownHostNonInteractive(t *testing.T) {
 	}
 }
 
-func startSSHTestServer(
+func TestPromptTrustUnknownHostInteractiveYesAfterRetry(t *testing.T) {
+	outputBuffer, _ := captureWriters(t)
+	answers := []string{"maybe", "yes"}
+	answerIndex := 0
+
+	stubTrustPromptHooks(
+		t,
+		func(*os.File) bool { return true },
+		func(_ *bufio.Reader, label string) (string, error) {
+			if !strings.Contains(label, "Trust this host and add it to /tmp/known_hosts?") {
+				t.Fatalf("unexpected prompt label: %q", label)
+			}
+			answer := answers[answerIndex]
+			answerIndex++
+			return answer, nil
+		},
+	)
+
+	hostPublicKey := parsePublicKeyFromAuthorizedLine(t, generateTestKey(t))
+	trustHost, err := promptTrustUnknownHost("example.com:22", "/tmp/known_hosts", hostPublicKey)
+	if err != nil {
+		t.Fatalf("promptTrustUnknownHost() error = %v", err)
+	}
+	if !trustHost {
+		t.Fatalf("expected trustHost=true")
+	}
+	if answerIndex != 2 {
+		t.Fatalf("prompt attempts = %d, want 2", answerIndex)
+	}
+
+	output := outputBuffer.String()
+	if !strings.Contains(output, "can't be established") {
+		t.Fatalf("missing host authenticity message: %q", output)
+	}
+	if !strings.Contains(output, "Please answer \"yes\" or \"no\".") {
+		t.Fatalf("missing retry guidance: %q", output)
+	}
+}
+
+func TestPromptTrustUnknownHostInteractiveNo(t *testing.T) {
+	stubTrustPromptHooks(
+		t,
+		func(*os.File) bool { return true },
+		func(*bufio.Reader, string) (string, error) { return "n", nil },
+	)
+
+	hostPublicKey := parsePublicKeyFromAuthorizedLine(t, generateTestKey(t))
+	trustHost, err := promptTrustUnknownHost("example.com:22", "/tmp/known_hosts", hostPublicKey)
+	if err != nil {
+		t.Fatalf("promptTrustUnknownHost() error = %v", err)
+	}
+	if trustHost {
+		t.Fatalf("expected trustHost=false")
+	}
+}
+
+func TestPromptTrustUnknownHostPromptError(t *testing.T) {
+	stubTrustPromptHooks(
+		t,
+		func(*os.File) bool { return true },
+		func(*bufio.Reader, string) (string, error) { return "", errors.New("prompt failed") },
+	)
+
+	hostPublicKey := parsePublicKeyFromAuthorizedLine(t, generateTestKey(t))
+	_, err := promptTrustUnknownHost("example.com:22", "/tmp/known_hosts", hostPublicKey)
+	if err == nil {
+		t.Fatalf("expected prompt error")
+	}
+	if !strings.Contains(err.Error(), "prompt failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func newInMemorySSHClient(
 	t *testing.T,
+	clientConfig *ssh.ClientConfig,
 	sessionHandler func(command, stdin string) (stdout string, stderr string, exitStatus uint32),
-) (address string, cleanup func()) {
+) (*ssh.Client, func()) {
 	t.Helper()
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -799,111 +1007,153 @@ func startSSHTestServer(
 	}
 
 	serverConfig := &ssh.ServerConfig{
-		PasswordCallback: func(connectionMetadata ssh.ConnMetadata, password []byte) (*ssh.Permissions, error) {
-			if connectionMetadata.User() == "deploy" && string(password) == "password" {
-				return nil, nil
-			}
-			return nil, errors.New("invalid credentials")
+		PasswordCallback: func(ssh.ConnMetadata, []byte) (*ssh.Permissions, error) {
+			return nil, nil
 		},
 	}
 	serverConfig.AddHostKey(hostSigner)
 
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		if strings.Contains(err.Error(), "operation not permitted") {
-			t.Skipf("socket listeners are unavailable in this sandbox: %v", err)
-		}
-		t.Fatalf("start tcp listener: %v", err)
-	}
+	clientConn, serverConn, closeSocketPair := newSocketPair(t)
+	serverDone := make(chan struct{})
+	serverError := make(chan error, 1)
 
-	stopChannel := make(chan struct{})
-	var acceptLoop sync.WaitGroup
-	acceptLoop.Add(1)
 	go func() {
-		defer acceptLoop.Done()
-		for {
-			clientConnection, acceptErr := listener.Accept()
-			if acceptErr != nil {
-				select {
-				case <-stopChannel:
-					return
-				default:
-					return
-				}
+		defer close(serverDone)
+
+		sshConnection, channels, requests, handshakeErr := ssh.NewServerConn(serverConn, serverConfig)
+		if handshakeErr != nil {
+			serverError <- handshakeErr
+			return
+		}
+		defer sshConnection.Close()
+
+		go ssh.DiscardRequests(requests)
+
+		for newChannel := range channels {
+			if newChannel.ChannelType() != "session" {
+				_ = newChannel.Reject(ssh.UnknownChannelType, "unsupported channel type")
+				continue
 			}
 
-			go func(connection net.Conn) {
-				defer connection.Close()
+			channel, channelRequests, channelErr := newChannel.Accept()
+			if channelErr != nil {
+				continue
+			}
 
-				sshConnection, channels, requests, handshakeErr := ssh.NewServerConn(connection, serverConfig)
-				if handshakeErr != nil {
+			go func(acceptedChannel ssh.Channel, requestsChannel <-chan *ssh.Request) {
+				defer acceptedChannel.Close()
+				for request := range requestsChannel {
+					if request.Type != "exec" {
+						if request.WantReply {
+							_ = request.Reply(false, nil)
+						}
+						continue
+					}
+
+					var execRequest struct {
+						Command string
+					}
+					if unmarshalErr := ssh.Unmarshal(request.Payload, &execRequest); unmarshalErr != nil {
+						if request.WantReply {
+							_ = request.Reply(false, nil)
+						}
+						return
+					}
+					if request.WantReply {
+						_ = request.Reply(true, nil)
+					}
+
+					stdinReader := bufio.NewReader(acceptedChannel)
+					stdinValue, readErr := stdinReader.ReadString('\n')
+					if readErr != nil && !errors.Is(readErr, io.EOF) {
+						stdinValue = ""
+					}
+					stdout, stderr, exitStatus := sessionHandler(execRequest.Command, stdinValue)
+					if stdout != "" {
+						_, _ = acceptedChannel.Write([]byte(stdout))
+					}
+					if stderr != "" {
+						_, _ = acceptedChannel.Stderr().Write([]byte(stderr))
+					}
+
+					exitStatusPayload := struct {
+						Status uint32
+					}{Status: exitStatus}
+					_, _ = acceptedChannel.SendRequest("exit-status", false, ssh.Marshal(&exitStatusPayload))
 					return
 				}
-				defer sshConnection.Close()
-
-				go ssh.DiscardRequests(requests)
-
-				for newChannel := range channels {
-					if newChannel.ChannelType() != "session" {
-						_ = newChannel.Reject(ssh.UnknownChannelType, "unsupported channel type")
-						continue
-					}
-
-					channel, channelRequests, channelErr := newChannel.Accept()
-					if channelErr != nil {
-						continue
-					}
-
-					go func(acceptedChannel ssh.Channel, requestsChannel <-chan *ssh.Request) {
-						defer acceptedChannel.Close()
-						for request := range requestsChannel {
-							if request.Type != "exec" {
-								if request.WantReply {
-									_ = request.Reply(false, nil)
-								}
-								continue
-							}
-
-							var execRequest struct {
-								Command string
-							}
-							if unmarshalErr := ssh.Unmarshal(request.Payload, &execRequest); unmarshalErr != nil {
-								if request.WantReply {
-									_ = request.Reply(false, nil)
-								}
-								return
-							}
-							if request.WantReply {
-								_ = request.Reply(true, nil)
-							}
-
-							stdinBytes, _ := io.ReadAll(acceptedChannel)
-							stdout, stderr, exitStatus := sessionHandler(execRequest.Command, string(stdinBytes))
-							if stdout != "" {
-								_, _ = acceptedChannel.Write([]byte(stdout))
-							}
-							if stderr != "" {
-								_, _ = acceptedChannel.Stderr().Write([]byte(stderr))
-							}
-
-							exitStatusPayload := struct {
-								Status uint32
-							}{Status: exitStatus}
-							_, _ = acceptedChannel.SendRequest("exit-status", false, ssh.Marshal(&exitStatusPayload))
-							return
-						}
-					}(channel, channelRequests)
-				}
-			}(clientConnection)
+			}(channel, channelRequests)
 		}
 	}()
 
-	cleanupServer := func() {
-		close(stopChannel)
-		_ = listener.Close()
-		acceptLoop.Wait()
+	sshClientConnection, channels, requests, err := ssh.NewClientConn(clientConn, "in-memory", clientConfig)
+	if err != nil {
+		select {
+		case serverErr := <-serverError:
+			t.Fatalf("create in-memory ssh client failed: client=%v server=%v", err, serverErr)
+		default:
+			t.Fatalf("create in-memory ssh client failed: %v", err)
+		}
 	}
-	return listener.Addr().String(), cleanupServer
+	client := ssh.NewClient(sshClientConnection, channels, requests)
+
+	cleanupClient := func() {
+		_ = client.Close()
+		_ = serverConn.Close()
+		closeSocketPair()
+		<-serverDone
+	}
+	return client, cleanupClient
+}
+
+func newInMemorySSHClientRejectSession(t *testing.T, clientConfig *ssh.ClientConfig) (*ssh.Client, func()) {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("generate host key: %v", err)
+	}
+	hostSigner, err := ssh.NewSignerFromKey(privateKey)
+	if err != nil {
+		t.Fatalf("create signer: %v", err)
+	}
+
+	serverConfig := &ssh.ServerConfig{
+		PasswordCallback: func(ssh.ConnMetadata, []byte) (*ssh.Permissions, error) {
+			return nil, nil
+		},
+	}
+	serverConfig.AddHostKey(hostSigner)
+
+	clientConn, serverConn, closeSocketPair := newSocketPair(t)
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+
+		sshConnection, channels, requests, handshakeErr := ssh.NewServerConn(serverConn, serverConfig)
+		if handshakeErr != nil {
+			return
+		}
+		defer sshConnection.Close()
+
+		go ssh.DiscardRequests(requests)
+		for newChannel := range channels {
+			_ = newChannel.Reject(ssh.Prohibited, "session channels disabled")
+		}
+	}()
+
+	sshClientConnection, channels, requests, err := ssh.NewClientConn(clientConn, "in-memory", clientConfig)
+	if err != nil {
+		t.Fatalf("create in-memory ssh client failed: %v", err)
+	}
+	client := ssh.NewClient(sshClientConnection, channels, requests)
+	cleanupClient := func() {
+		_ = client.Close()
+		_ = serverConn.Close()
+		closeSocketPair()
+		<-serverDone
+	}
+	return client, cleanupClient
 }
 
 func TestAddAuthorizedKeyWithStatusSuccess(t *testing.T) {
@@ -911,12 +1161,6 @@ func TestAddAuthorizedKeyWithStatusSuccess(t *testing.T) {
 		capturedCommand string
 		capturedStdin   string
 	)
-	address, cleanupServer := startSSHTestServer(t, func(command, stdin string) (string, string, uint32) {
-		capturedCommand = command
-		capturedStdin = stdin
-		return "", "", 0
-	})
-	defer cleanupServer()
 
 	clientConfig := &ssh.ClientConfig{
 		User:            "deploy",
@@ -924,10 +1168,25 @@ func TestAddAuthorizedKeyWithStatusSuccess(t *testing.T) {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         2 * time.Second,
 	}
+	stubSSHDialHook(t, func(network, address string, config *ssh.ClientConfig) (*ssh.Client, error) {
+		if network != "tcp" {
+			t.Fatalf("unexpected network: %q", network)
+		}
+		if address != "in-memory:22" {
+			t.Fatalf("unexpected address: %q", address)
+		}
+		client, cleanupClient := newInMemorySSHClient(t, config, func(command, stdin string) (string, string, uint32) {
+			capturedCommand = command
+			capturedStdin = stdin
+			return "", "", 0
+		})
+		t.Cleanup(cleanupClient)
+		return client, nil
+	})
 
 	publicKey := strings.TrimSpace(generateTestKey(t))
 	var logMessages []string
-	err := addAuthorizedKeyWithStatus(address, publicKey, clientConfig, func(format string, args ...any) {
+	err := addAuthorizedKeyWithStatus("in-memory:22", publicKey, clientConfig, func(format string, args ...any) {
 		logMessages = append(logMessages, fmt.Sprintf(format, args...))
 	})
 	if err != nil {
@@ -958,24 +1217,72 @@ func TestAddAuthorizedKeyWithStatusSuccess(t *testing.T) {
 }
 
 func TestAddAuthorizedKeyWithStatusCommandFailureIncludesOutput(t *testing.T) {
-	address, cleanupServer := startSSHTestServer(t, func(command, stdin string) (string, string, uint32) {
-		return "", "remote command failed", 1
-	})
-	defer cleanupServer()
-
 	clientConfig := &ssh.ClientConfig{
 		User:            "deploy",
 		Auth:            []ssh.AuthMethod{ssh.Password("password")},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         2 * time.Second,
 	}
+	stubSSHDialHook(t, func(_, _ string, config *ssh.ClientConfig) (*ssh.Client, error) {
+		client, cleanupClient := newInMemorySSHClient(t, config, func(command, stdin string) (string, string, uint32) {
+			return "", "remote command failed", 1
+		})
+		t.Cleanup(cleanupClient)
+		return client, nil
+	})
 
-	err := addAuthorizedKeyWithStatus(address, strings.TrimSpace(generateTestKey(t)), clientConfig, nil)
+	err := addAuthorizedKeyWithStatus("in-memory:22", strings.TrimSpace(generateTestKey(t)), clientConfig, nil)
 	if err == nil {
 		t.Fatalf("expected remote command failure")
 	}
 	if !strings.Contains(err.Error(), "remote command failed") {
 		t.Fatalf("expected remote stderr in error, got %v", err)
+	}
+}
+
+func TestAddAuthorizedKeyWithStatusCommandFailureWithoutOutput(t *testing.T) {
+	clientConfig := &ssh.ClientConfig{
+		User:            "deploy",
+		Auth:            []ssh.AuthMethod{ssh.Password("password")},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         2 * time.Second,
+	}
+	stubSSHDialHook(t, func(_, _ string, config *ssh.ClientConfig) (*ssh.Client, error) {
+		client, cleanupClient := newInMemorySSHClient(t, config, func(command, stdin string) (string, string, uint32) {
+			return "", "", 1
+		})
+		t.Cleanup(cleanupClient)
+		return client, nil
+	})
+
+	err := addAuthorizedKeyWithStatus("in-memory:22", strings.TrimSpace(generateTestKey(t)), clientConfig, nil)
+	if err == nil {
+		t.Fatalf("expected remote command failure")
+	}
+	if strings.Contains(err.Error(), "remote command failed") {
+		t.Fatalf("unexpected stderr wrapper for empty output: %v", err)
+	}
+}
+
+func TestAddAuthorizedKeyWithStatusCreateSessionFailure(t *testing.T) {
+	clientConfig := &ssh.ClientConfig{
+		User:            "deploy",
+		Auth:            []ssh.AuthMethod{ssh.Password("password")},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         2 * time.Second,
+	}
+	stubSSHDialHook(t, func(_, _ string, config *ssh.ClientConfig) (*ssh.Client, error) {
+		client, cleanupClient := newInMemorySSHClientRejectSession(t, config)
+		t.Cleanup(cleanupClient)
+		return client, nil
+	})
+
+	err := addAuthorizedKeyWithStatus("in-memory:22", strings.TrimSpace(generateTestKey(t)), clientConfig, nil)
+	if err == nil {
+		t.Fatalf("expected new session failure")
+	}
+	if !strings.Contains(err.Error(), "create session:") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -986,6 +1293,9 @@ func TestAddAuthorizedKeyWithStatusDialFailure(t *testing.T) {
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 		Timeout:         150 * time.Millisecond,
 	}
+	stubSSHDialHook(t, func(string, string, *ssh.ClientConfig) (*ssh.Client, error) {
+		return nil, errors.New("forced dial error")
+	})
 
 	var logMessages []string
 	err := addAuthorizedKeyWithStatus("127.0.0.1:1", generateTestKey(t), clientConfig, func(format string, args ...any) {

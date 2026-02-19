@@ -18,6 +18,9 @@ import (
 )
 
 var confirmUnknownHost = promptTrustUnknownHost
+var sshDial = ssh.Dial
+var isTerminalForTrustPrompt = isTerminal
+var promptLineForTrustPrompt = promptLine
 
 func buildSSHConfig(programOptions *options) (*ssh.ClientConfig, error) {
 	hostKeyCallback, err := buildHostKeyCallback(programOptions.InsecureIgnoreHostKey, programOptions.KnownHosts)
@@ -102,7 +105,7 @@ func ensureKnownHostsFile(path string) error {
 }
 
 func promptTrustUnknownHost(hostname, knownHostsPath string, key ssh.PublicKey) (bool, error) {
-	if !isTerminal(os.Stdin) {
+	if !isTerminalForTrustPrompt(os.Stdin) {
 		return false, fmt.Errorf("unknown host %s and no interactive terminal available to confirm trust", hostname)
 	}
 
@@ -111,7 +114,7 @@ func promptTrustUnknownHost(hostname, knownHostsPath string, key ssh.PublicKey) 
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		answer, err := promptLine(reader, fmt.Sprintf("Trust this host and add it to %s? (yes/no): ", knownHostsPath))
+		answer, err := promptLineForTrustPrompt(reader, fmt.Sprintf("Trust this host and add it to %s? (yes/no): ", knownHostsPath))
 		if err != nil {
 			return false, err
 		}
@@ -149,7 +152,7 @@ func addAuthorizedKeyWithStatus(hostAddress, publicKey string, clientConfig *ssh
 	if logf != nil {
 		logf("Connecting over SSH...")
 	}
-	client, err := ssh.Dial("tcp", hostAddress, clientConfig)
+	client, err := sshDial("tcp", hostAddress, clientConfig)
 	if err != nil {
 		return fmt.Errorf("ssh dial: %w", err)
 	}
