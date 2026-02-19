@@ -64,6 +64,8 @@ If `--env` is not provided, the tool checks for `.env` in the same directory as 
 ```dotenv
 SERVERS=app01,app02:2222
 USER=deploy
+# Set one of PASSWORD or PASSWORD_SECRET_REF (not both).
+PASSWORD=replace-with-your-password
 PASSWORD_SECRET_REF=bw://replace-with-your-secret-id
 KEY=~/.ssh/id_ed25519.pub
 PORT=22
