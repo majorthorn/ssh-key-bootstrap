@@ -97,3 +97,75 @@ func TestParseBWSSecretOutput(t *testing.T) {
 		})
 	}
 }
+
+func TestProviderResolve(t *testing.T) {
+	t.Run("uses bw when available", func(testContext *testing.T) {
+		commandDirectory := testContext.TempDir()
+		createFakeCommand(testContext, commandDirectory, "bw", `#!/bin/sh
+printf "bw-provider-secret"
+`)
+		createFakeCommand(testContext, commandDirectory, "bws", `#!/bin/sh
+printf '{"value":"bws-should-not-be-used"}'
+`)
+		testContext.Setenv("PATH", commandDirectory)
+
+		resolvedSecret, err := provider{}.Resolve("bw://secret-id")
+		if err != nil {
+			testContext.Fatalf("provider resolve: %v", err)
+		}
+		if resolvedSecret != "bw-provider-secret" {
+			testContext.Fatalf("resolved secret = %q, want %q", resolvedSecret, "bw-provider-secret")
+		}
+	})
+
+	t.Run("falls back to bws when bw fails", func(testContext *testing.T) {
+		commandDirectory := testContext.TempDir()
+		createFakeCommand(testContext, commandDirectory, "bw", `#!/bin/sh
+echo "bw failed" >&2
+exit 1
+`)
+		createFakeCommand(testContext, commandDirectory, "bws", `#!/bin/sh
+printf '{"value":"resolved-from-bws-fallback"}'
+`)
+		testContext.Setenv("PATH", commandDirectory)
+
+		resolvedSecret, err := provider{}.Resolve("bw://secret-id")
+		if err != nil {
+			testContext.Fatalf("provider resolve fallback: %v", err)
+		}
+		if resolvedSecret != "resolved-from-bws-fallback" {
+			testContext.Fatalf("resolved secret = %q, want %q", resolvedSecret, "resolved-from-bws-fallback")
+		}
+	})
+
+	t.Run("returns bws error when both commands fail", func(testContext *testing.T) {
+		commandDirectory := testContext.TempDir()
+		createFakeCommand(testContext, commandDirectory, "bw", `#!/bin/sh
+echo "bw failed" >&2
+exit 1
+`)
+		createFakeCommand(testContext, commandDirectory, "bws", `#!/bin/sh
+echo "bws failed" >&2
+exit 1
+`)
+		testContext.Setenv("PATH", commandDirectory)
+
+		_, err := provider{}.Resolve("bw://secret-id")
+		if err == nil {
+			testContext.Fatalf("expected provider resolve error")
+		}
+		if !strings.Contains(err.Error(), "bws failed") {
+			testContext.Fatalf("expected bws failure in error, got %v", err)
+		}
+	})
+
+	t.Run("rejects unsupported reference format", func(testContext *testing.T) {
+		_, err := provider{}.Resolve("vault://secret-id")
+		if err == nil {
+			testContext.Fatalf("expected parse error")
+		}
+		if !strings.Contains(err.Error(), "invalid bitwarden secret ref") {
+			testContext.Fatalf("unexpected error: %v", err)
+		}
+	})
+}

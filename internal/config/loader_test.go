@@ -200,3 +200,63 @@ func TestDiscoverConfigFileNearBinary(t *testing.T) {
 		}
 	}
 }
+
+func ensureDotEnvNearBinary(t *testing.T, content string) string {
+	t.Helper()
+
+	executablePath, err := os.Executable()
+	if err != nil {
+		t.Fatalf("os.Executable() error = %v", err)
+	}
+
+	dotEnvPath := filepath.Join(filepath.Dir(executablePath), defaultBinaryDotEnvFilename)
+	originalBytes, readErr := os.ReadFile(dotEnvPath)
+	if readErr == nil {
+		t.Cleanup(func() {
+			_ = os.WriteFile(dotEnvPath, originalBytes, 0o600)
+		})
+		return dotEnvPath
+	}
+
+	if writeErr := os.WriteFile(dotEnvPath, []byte(content), 0o600); writeErr != nil {
+		t.Skipf("cannot create %q in this environment: %v", dotEnvPath, writeErr)
+	}
+	t.Cleanup(func() { _ = os.Remove(dotEnvPath) })
+	return dotEnvPath
+}
+
+func TestResolveDotEnvSourceInteractiveDiscovery(t *testing.T) {
+	dotEnvPath := ensureDotEnvNearBinary(t, "USER=discover\n")
+
+	t.Run("accepts discovered dot env", func(testContext *testing.T) {
+		runtime := &scriptedRuntimeIO{interactive: true, answers: []string{"y"}}
+		opts := &Options{}
+
+		path, err := resolveDotEnvSource(opts, runtime)
+		if err != nil {
+			testContext.Fatalf("resolveDotEnvSource() error = %v", err)
+		}
+		if path != dotEnvPath {
+			testContext.Fatalf("resolveDotEnvSource() = %q, want %q", path, dotEnvPath)
+		}
+		if runtime.promptCalls != 1 {
+			testContext.Fatalf("prompt calls = %d, want 1", runtime.promptCalls)
+		}
+	})
+
+	t.Run("rejects discovered dot env", func(testContext *testing.T) {
+		runtime := &scriptedRuntimeIO{interactive: true, answers: []string{"n"}}
+		opts := &Options{}
+
+		path, err := resolveDotEnvSource(opts, runtime)
+		if err != nil {
+			testContext.Fatalf("resolveDotEnvSource() error = %v", err)
+		}
+		if path != "" {
+			testContext.Fatalf("resolveDotEnvSource() = %q, want empty", path)
+		}
+		if runtime.promptCalls != 1 {
+			testContext.Fatalf("prompt calls = %d, want 1", runtime.promptCalls)
+		}
+	})
+}
