@@ -4,10 +4,7 @@ Add a public SSH key to one or more remote Linux/Unix hosts over SSH.
 
 ## AI Disclaimer
 
-- This README and the current codebase were created with assistance from Codex (ChatGPT). AI may introduce subtle bugs or omissions.
-- The developer has reviewed the code to the best of their ability but is a novice with Go and still learning; please audit every change before use.
-- Please review the code, dependencies, and security posture before building or running the tool.
-- Test thoroughly in a safe environment and verify host key expectations before granting access.
+- This project was written with AI assistance (Codex/ChatGPT); review it carefully and use caution before trusting it in real environments.
 
 ## What It Does
 
@@ -32,7 +29,7 @@ go build -o vibe-ssh-lift .
 ```
 
 If required values are missing, the tool prompts interactively.
-If `--env` is not provided, the tool checks for `.env` in the same directory as the executable and asks whether to use it.
+If `--env` is not provided, interactive runs check for `.env` in the same directory as the executable and ask whether to use it.
 
 ## Flags
 
@@ -65,8 +62,8 @@ If `--env` is not provided, the tool checks for `.env` in the same directory as 
 SERVERS=app01,app02:2222
 USER=deploy
 # Set one of PASSWORD or PASSWORD_SECRET_REF (not both).
-PASSWORD=replace-with-your-password
 PASSWORD_SECRET_REF=bw://replace-with-your-secret-id
+# PASSWORD=replace-with-your-password
 KEY=~/.ssh/id_ed25519.pub
 PORT=22
 TIMEOUT=10
@@ -130,15 +127,6 @@ Provider files can be split by concern for easier maintenance (recommended for n
    - supported vs unsupported refs
    - success resolution
    - provider failure paths
-
-## Config loading behavior
-
-- If `.env` is found next to the binary, the tool asks whether to use it.
-- If `--env` is set, the provided `.env` path is used.
-
-## Config Review Prompt
-
-When a config file is used in an interactive session, the tool prints loaded values before continuing. Sensitive values are masked in the preview (for example, passwords are fully redacted) so you can validate without exposing full secrets on screen. In non-interactive runs, this preview is skipped.
 
 ## Security Notes
 
