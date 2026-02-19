@@ -20,15 +20,15 @@ import (
 var confirmUnknownHost = promptTrustUnknownHost
 
 func buildSSHConfig(programOptions *options) (*ssh.ClientConfig, error) {
-	hostKeyCallback, err := buildHostKeyCallback(programOptions.insecureIgnoreHostKey, programOptions.knownHosts)
+	hostKeyCallback, err := buildHostKeyCallback(programOptions.InsecureIgnoreHostKey, programOptions.KnownHosts)
 	if err != nil {
 		return nil, err
 	}
 	return &ssh.ClientConfig{
-		User:            programOptions.user,
-		Auth:            []ssh.AuthMethod{ssh.Password(programOptions.password)},
+		User:            programOptions.User,
+		Auth:            []ssh.AuthMethod{ssh.Password(programOptions.Password)},
 		HostKeyCallback: hostKeyCallback,
-		Timeout:         time.Duration(programOptions.timeoutSec) * time.Second,
+		Timeout:         time.Duration(programOptions.TimeoutSec) * time.Second,
 	}, nil
 }
 

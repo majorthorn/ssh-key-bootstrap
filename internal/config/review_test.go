@@ -44,11 +44,11 @@ func TestPreviewHelpers(t *testing.T) {
 	if got := previewTextValue("abcdefghijk", 5); got != "abcde..." {
 		t.Fatalf("previewTextValue(truncate) = %q, want %q", got, "abcde...")
 	}
-	if got := maskSensitiveValue("abcd"); got != "abc***" {
-		t.Fatalf("maskSensitiveValue = %q, want %q", got, "abc***")
+	if got := maskSensitiveValue("abcd"); got != "<redacted>" {
+		t.Fatalf("maskSensitiveValue = %q, want %q", got, "<redacted>")
 	}
-	if got := maskSensitiveValue("a"); got != "a***" {
-		t.Fatalf("maskSensitiveValue(short) = %q, want %q", got, "a***")
+	if got := maskSensitiveValue("a"); got != "<redacted>" {
+		t.Fatalf("maskSensitiveValue(short) = %q, want %q", got, "<redacted>")
 	}
 
 	programOptions := &Options{
@@ -61,8 +61,8 @@ func TestPreviewHelpers(t *testing.T) {
 		kind: "password",
 		get:  func(optionsValue *Options) string { return optionsValue.Password },
 	}, programOptions)
-	if !strings.HasSuffix(passwordPreview, "***") {
-		t.Fatalf("password preview not masked: %q", passwordPreview)
+	if passwordPreview != "<redacted>" {
+		t.Fatalf("password preview not redacted: %q", passwordPreview)
 	}
 
 	keyPreview := previewFieldValue(configField{

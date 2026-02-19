@@ -68,9 +68,5 @@ func maskSensitiveValue(value string) string {
 	if value == "" {
 		return "<empty>"
 	}
-	visiblePrefixLength := 3
-	if len(value) <= visiblePrefixLength {
-		visiblePrefixLength = 1
-	}
-	return value[:visiblePrefixLength] + "***"
+	return "<redacted>"
 }

@@ -79,7 +79,7 @@ Real configs should live outside of Git commits. Keep `configexamples/` full of 
 Config discovery and review happen before any keys are pushed:
 
 - When `.env` is detected next to the binary (or provided via `--env`), the tool can load it before execution.
-- In interactive runs, loaded config values are printed before execution; sensitive fields such as the password are masked (only a short prefix is shown).
+- In interactive runs, loaded config values are printed before execution; sensitive fields such as the password are fully redacted.
 - In non-interactive runs, config preview output is skipped.
 
 ## Optional Secret References
@@ -136,7 +136,7 @@ Provider files can be split by concern for easier maintenance (recommended for n
 
 ## Config Review Prompt
 
-When a config file is used in an interactive session, the tool prints loaded values before continuing. Sensitive values are masked in the preview (for example, the password only shows a short prefix) so you can validate without exposing full secrets on screen. In non-interactive runs, this preview is skipped.
+When a config file is used in an interactive session, the tool prints loaded values before continuing. Sensitive values are masked in the preview (for example, passwords are fully redacted) so you can validate without exposing full secrets on screen. In non-interactive runs, this preview is skipped.
 
 ## Security Notes
 

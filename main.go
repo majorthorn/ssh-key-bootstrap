@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	appconfig "vibe-ssh-lift/internal/config"
 )
 
 const (
@@ -26,19 +28,7 @@ const addAuthorizedKeyScript = "set -eu\n" +
 	"IFS= read -r KEY\n" +
 	"grep -qxF \"$KEY\" ~/.ssh/authorized_keys || printf '%s\\n' \"$KEY\" >> ~/.ssh/authorized_keys\n"
 
-type options struct {
-	server                string
-	servers               string
-	user                  string
-	password              string
-	passwordSecretRef     string
-	keyInput              string
-	envFile               string
-	port                  int
-	timeoutSec            int
-	insecureIgnoreHostKey bool
-	knownHosts            string
-}
+type options = appconfig.Options
 
 type statusError struct {
 	code int
@@ -79,9 +69,10 @@ func run() error {
 	if err != nil {
 		return fail(2, "%w", err)
 	}
+	inputReader := bufio.NewReader(os.Stdin)
 
 	outputAnsibleTask("Load configuration")
-	if err := applyConfigFiles(programOptions); err != nil {
+	if err := applyConfigFiles(programOptions, inputReader); err != nil {
 		return fail(2, "%w", err)
 	}
 	outputAnsibleHostStatus("ok", "localhost", "")
@@ -92,7 +83,6 @@ func run() error {
 	}
 	outputAnsibleHostStatus("ok", "localhost", "")
 
-	inputReader := bufio.NewReader(os.Stdin)
 	outputAnsibleTask("Collect missing inputs")
 	if err := fillMissingInputs(inputReader, programOptions); err != nil {
 		return fail(2, "%w", err)
@@ -100,14 +90,14 @@ func run() error {
 	outputAnsibleHostStatus("ok", "localhost", "")
 
 	outputAnsibleTask("Resolve target hosts")
-	hosts, err := resolveHosts(programOptions.server, programOptions.servers, programOptions.port)
+	hosts, err := resolveHosts(programOptions.Server, programOptions.Servers, programOptions.Port)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
 	outputAnsibleHostStatus("ok", "localhost", fmt.Sprintf("%d host(s) queued", len(hosts)))
 
 	outputAnsibleTask("Resolve public key")
-	publicKey, err := resolvePublicKey(programOptions.keyInput)
+	publicKey, err := resolvePublicKey(programOptions.KeyInput)
 	if err != nil {
 		return fail(2, "%w", err)
 	}
@@ -144,9 +134,9 @@ func run() error {
 
 func parseFlags() (*options, error) {
 	programOptions := &options{
-		port:       defaultSSHPort,
-		timeoutSec: defaultTimeoutSeconds,
-		knownHosts: defaultKnownHostsPath,
+		Port:       defaultSSHPort,
+		TimeoutSec: defaultTimeoutSeconds,
+		KnownHosts: defaultKnownHostsPath,
 	}
 	normalizeHelpArg()
 	flag.CommandLine.SetOutput(commandOutputWriter())
@@ -160,7 +150,7 @@ func parseFlags() (*options, error) {
 		fmt.Fprintln(output, "Any missing values are prompted interactively.")
 	}
 
-	flag.StringVar(&programOptions.envFile, "env", "", "Path to .env config file")
+	flag.StringVar(&programOptions.EnvFile, "env", "", "Path to .env config file")
 
 	flag.Parse()
 	if flag.NArg() > 0 {

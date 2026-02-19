@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"crypto/ed25519"
 	"crypto/rand"
 	"net"
@@ -87,14 +88,14 @@ func TestValidateOptionsPasswordSecretRefResolves(testContext *testing.T) {
 	testContext.Cleanup(func() { resolvePasswordFromSecretRef = originalResolver })
 
 	programOptions := &options{
-		port:              defaultSSHPort,
-		timeoutSec:        defaultTimeoutSeconds,
-		passwordSecretRef: "bw://ssh-prod-password",
+		Port:              defaultSSHPort,
+		TimeoutSec:        defaultTimeoutSeconds,
+		PasswordSecretRef: "bw://ssh-prod-password",
 	}
 	if validateErr := validateOptions(programOptions); validateErr != nil {
 		testContext.Fatalf("validate options: %v", validateErr)
 	}
-	if programOptions.password != "resolved-password" {
+	if programOptions.Password != "resolved-password" {
 		testContext.Fatalf("password was not resolved from secret ref")
 	}
 }
@@ -104,10 +105,10 @@ func TestValidateOptionsPasswordSecretRefConflict(testContext *testing.T) {
 	testContext.Parallel()
 
 	programOptions := &options{
-		port:              defaultSSHPort,
-		timeoutSec:        defaultTimeoutSeconds,
-		password:          "plaintext",
-		passwordSecretRef: "bw://ssh-prod-password",
+		Port:              defaultSSHPort,
+		TimeoutSec:        defaultTimeoutSeconds,
+		Password:          "plaintext",
+		PasswordSecretRef: "bw://ssh-prod-password",
 	}
 	if validateErr := validateOptions(programOptions); validateErr == nil {
 		testContext.Fatalf("expected conflict error")
@@ -252,37 +253,37 @@ KNOWN_HOSTS=~/.ssh/env_known_hosts
 	}
 
 	programOptions := &options{
-		envFile:               dotEnvPath,
-		server:                "existing-host",
-		insecureIgnoreHostKey: false,
+		EnvFile:               dotEnvPath,
+		Server:                "existing-host",
+		InsecureIgnoreHostKey: false,
 	}
 
 	if _, applyErr := applyDotEnvConfigFileWithMetadata(programOptions); applyErr != nil {
 		testContext.Fatalf("apply .env config: %v", applyErr)
 	}
 
-	if programOptions.server != "env-host" {
+	if programOptions.Server != "env-host" {
 		testContext.Fatalf("server not loaded from .env config")
 	}
-	if programOptions.user != "env-user" {
+	if programOptions.User != "env-user" {
 		testContext.Fatalf("user not loaded from .env config")
 	}
-	if programOptions.password != "env password" {
+	if programOptions.Password != "env password" {
 		testContext.Fatalf("password not loaded from .env config")
 	}
-	if programOptions.passwordSecretRef != "bw://ssh-prod-password" {
+	if programOptions.PasswordSecretRef != "bw://ssh-prod-password" {
 		testContext.Fatalf("password secret ref not loaded from .env config")
 	}
-	if programOptions.keyInput != "ssh-ed25519 AAAAENV" {
+	if programOptions.KeyInput != "ssh-ed25519 AAAAENV" {
 		testContext.Fatalf("key input not loaded from .env config")
 	}
-	if programOptions.port != 2300 {
+	if programOptions.Port != 2300 {
 		testContext.Fatalf("port not loaded from .env config")
 	}
-	if programOptions.timeoutSec != 40 {
+	if programOptions.TimeoutSec != 40 {
 		testContext.Fatalf("timeout not loaded from .env config")
 	}
-	if !programOptions.insecureIgnoreHostKey {
+	if !programOptions.InsecureIgnoreHostKey {
 		testContext.Fatalf("insecure mode not loaded from .env config")
 	}
 }
@@ -299,20 +300,20 @@ func TestApplyConfigFiles(testContext *testing.T) {
 	}
 
 	programOptions := &options{
-		envFile: dotEnvPath,
+		EnvFile: dotEnvPath,
 	}
 
-	if applyErr := applyConfigFiles(programOptions); applyErr != nil {
+	if applyErr := applyConfigFiles(programOptions, bufio.NewReader(strings.NewReader(""))); applyErr != nil {
 		testContext.Fatalf("apply config files: %v", applyErr)
 	}
 
-	if programOptions.user != "env-user" {
+	if programOptions.User != "env-user" {
 		testContext.Fatalf("user not loaded from .env config")
 	}
-	if programOptions.password != "env-password" {
+	if programOptions.Password != "env-password" {
 		testContext.Fatalf("password not loaded from .env config")
 	}
-	if programOptions.server != "env-host" {
+	if programOptions.Server != "env-host" {
 		testContext.Fatalf("server not loaded from .env config")
 	}
 }
@@ -328,7 +329,7 @@ func TestApplyDotEnvConfigFileInvalidPort(testContext *testing.T) {
 		testContext.Fatalf("write .env config: %v", writeErr)
 	}
 
-	programOptions := &options{envFile: dotEnvPath}
+	programOptions := &options{EnvFile: dotEnvPath}
 	_, applyErr := applyDotEnvConfigFileWithMetadata(programOptions)
 	if applyErr == nil {
 		testContext.Fatalf("expected invalid PORT error")

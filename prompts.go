@@ -16,21 +16,21 @@ var resolvePasswordFromSecretRef = func(secretRef string) (string, error) {
 }
 
 func validateOptions(programOptions *options) error {
-	if programOptions.port < 1 || programOptions.port > 65535 {
+	if programOptions.Port < 1 || programOptions.Port > 65535 {
 		return errors.New("port must be in range 1..65535")
 	}
-	if programOptions.timeoutSec <= 0 {
+	if programOptions.TimeoutSec <= 0 {
 		return errors.New("timeout must be greater than zero")
 	}
-	if strings.TrimSpace(programOptions.password) != "" && strings.TrimSpace(programOptions.passwordSecretRef) != "" {
+	if strings.TrimSpace(programOptions.Password) != "" && strings.TrimSpace(programOptions.PasswordSecretRef) != "" {
 		return errors.New("use either PASSWORD/password or PASSWORD_SECRET_REF/password_secret_ref, not both")
 	}
-	if strings.TrimSpace(programOptions.password) == "" && strings.TrimSpace(programOptions.passwordSecretRef) != "" {
-		resolvedPassword, err := resolvePasswordFromSecretRef(programOptions.passwordSecretRef)
+	if strings.TrimSpace(programOptions.Password) == "" && strings.TrimSpace(programOptions.PasswordSecretRef) != "" {
+		resolvedPassword, err := resolvePasswordFromSecretRef(programOptions.PasswordSecretRef)
 		if err != nil {
 			return fmt.Errorf("resolve password secret reference: %w", err)
 		}
-		programOptions.password = resolvedPassword
+		programOptions.Password = resolvedPassword
 	}
 	return nil
 }
@@ -38,30 +38,30 @@ func validateOptions(programOptions *options) error {
 func fillMissingInputs(inputReader *bufio.Reader, programOptions *options) error {
 	var err error
 
-	if strings.TrimSpace(programOptions.user) == "" {
-		programOptions.user, err = promptRequired(inputReader, "SSH username: ")
+	if strings.TrimSpace(programOptions.User) == "" {
+		programOptions.User, err = promptRequired(inputReader, "SSH username: ")
 		if err != nil {
 			return err
 		}
 	}
 
-	if strings.TrimSpace(programOptions.password) == "" {
-		programOptions.password, err = promptPassword(inputReader, "SSH password: ")
+	if strings.TrimSpace(programOptions.Password) == "" {
+		programOptions.Password, err = promptPassword(inputReader, "SSH password: ")
 		if err != nil {
 			return err
 		}
 	}
 
-	if strings.TrimSpace(programOptions.server) == "" &&
-		strings.TrimSpace(programOptions.servers) == "" {
-		programOptions.servers, err = promptRequired(inputReader, "Servers (comma-separated, host or host:port): ")
+	if strings.TrimSpace(programOptions.Server) == "" &&
+		strings.TrimSpace(programOptions.Servers) == "" {
+		programOptions.Servers, err = promptRequired(inputReader, "Servers (comma-separated, host or host:port): ")
 		if err != nil {
 			return err
 		}
 	}
 
-	if strings.TrimSpace(programOptions.keyInput) == "" {
-		programOptions.keyInput, err = promptRequired(inputReader, "Public key text or path to public key file: ")
+	if strings.TrimSpace(programOptions.KeyInput) == "" {
+		programOptions.KeyInput, err = promptRequired(inputReader, "Public key text or path to public key file: ")
 		if err != nil {
 			return err
 		}
