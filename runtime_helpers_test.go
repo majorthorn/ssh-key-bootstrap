@@ -456,7 +456,7 @@ func TestPromptPasswordReadsFromReaderWhenNotTerminal(t *testing.T) {
 	outputBuffer, _ := captureWriters(t)
 	reader := bufio.NewReader(strings.NewReader("\n  secret-password  \n"))
 
-	value, err := promptPassword(reader, "SSH password: ")
+	value, err := promptPassword(reader, os.Stdin, "SSH password: ")
 	if err != nil {
 		t.Fatalf("promptPassword() error = %v", err)
 	}
@@ -481,7 +481,7 @@ func TestPromptPasswordUsesTerminalReadPasswordWhenAvailable(t *testing.T) {
 		func(*os.File) ([]byte, error) { return []byte("terminal-secret"), nil },
 	)
 
-	value, err := promptPassword(bufio.NewReader(strings.NewReader("unused")), "SSH password: ")
+	value, err := promptPassword(bufio.NewReader(strings.NewReader("unused")), os.Stdin, "SSH password: ")
 	if err != nil {
 		t.Fatalf("promptPassword() error = %v", err)
 	}
@@ -502,7 +502,7 @@ func TestPromptPasswordTerminalReadError(t *testing.T) {
 		func(*os.File) ([]byte, error) { return nil, errors.New("terminal read failed") },
 	)
 
-	_, err := promptPassword(bufio.NewReader(strings.NewReader("unused")), "SSH password: ")
+	_, err := promptPassword(bufio.NewReader(strings.NewReader("unused")), os.Stdin, "SSH password: ")
 	if err == nil {
 		t.Fatalf("expected promptPassword() error")
 	}
@@ -523,7 +523,7 @@ func TestPromptPasswordReturnsReaderErrorWhenNotTerminal(t *testing.T) {
 	captureWriters(t)
 	reader := bufio.NewReader(errReader{})
 
-	_, err := promptPassword(reader, "SSH password: ")
+	_, err := promptPassword(reader, os.Stdin, "SSH password: ")
 	if err == nil {
 		t.Fatalf("expected promptPassword() error")
 	}

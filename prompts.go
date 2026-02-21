@@ -49,7 +49,7 @@ func fillMissingInputs(inputReader *bufio.Reader, programOptions *options) error
 	}
 
 	if strings.TrimSpace(programOptions.Password) == "" {
-		programOptions.Password, err = promptPassword(inputReader, "SSH password: ")
+		programOptions.Password, err = promptPassword(inputReader, os.Stdin, "SSH password: ")
 		if err != nil {
 			return err
 		}
@@ -86,13 +86,20 @@ func promptRequired(reader *bufio.Reader, label string) (string, error) {
 	}
 }
 
-func promptPassword(reader *bufio.Reader, label string) (string, error) {
+func promptPassword(reader *bufio.Reader, terminalInput *os.File, label string) (string, error) {
+	if terminalInput == nil {
+		terminalInput = os.Stdin
+	}
+	if reader == nil {
+		reader = bufio.NewReader(terminalInput)
+	}
+
 	for {
 		outputPrint(label)
 
 		var passwordInput string
-		if isTerminalForPasswordPrompt(os.Stdin) {
-			passwordBytes, err := readPasswordForPrompt(os.Stdin)
+		if isTerminalForPasswordPrompt(terminalInput) {
+			passwordBytes, err := readPasswordForPrompt(terminalInput)
 			outputPrintln()
 			if err != nil {
 				return "", err
