@@ -37,7 +37,7 @@ Create `.env`:
 
 Run:
 
-    ./ssh-key-bootstrap --env ./my.env
+    ./ssh-key-bootstrap --env ./.env
 
 ## Detailed Documentation
 
