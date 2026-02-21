@@ -24,7 +24,7 @@ Run with a .env file:
 
 ## Minimal Configuration Example
 
-Create `my.env`:
+Create `.env`:
 
     SERVERS=app01,app02:2222
     USER=deploy
