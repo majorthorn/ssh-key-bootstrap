@@ -37,7 +37,7 @@ func configFields() []configField {
 		{key: "passwordSecretRef", label: "Password Secret Ref", kind: "text", get: func(optionsValue *Options) string { return optionsValue.PasswordSecretRef }},
 		{key: "keyInput", label: "Public Key Input", kind: "publickey", get: func(optionsValue *Options) string { return optionsValue.KeyInput }},
 		{key: "port", label: "Default Port", kind: "text", get: func(optionsValue *Options) string { return fmt.Sprintf("%d", optionsValue.Port) }},
-		{key: "passwordSecretRef", label: "Password Secret Ref", kind: "password", get: func(optionsValue *Options) string { return optionsValue.PasswordSecretRef }},
+		{key: "timeoutSec", label: "Timeout (Seconds)", kind: "text", get: func(optionsValue *Options) string { return fmt.Sprintf("%d", optionsValue.TimeoutSec) }},
 		{key: "insecureIgnoreHostKey", label: "Insecure Ignore Host Key", kind: "text", get: func(optionsValue *Options) string { return fmt.Sprintf("%t", optionsValue.InsecureIgnoreHostKey) }},
 		{key: "knownHosts", label: "Known Hosts Path", kind: "text", get: func(optionsValue *Options) string { return optionsValue.KnownHosts }},
 	}

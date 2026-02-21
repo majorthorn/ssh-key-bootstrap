@@ -35,6 +35,9 @@ func parseDotEnvContent(dotEnvContent string) (map[string]string, error) {
 		if key == "" {
 			return nil, fmt.Errorf("line %d: key is empty", lineNumber)
 		}
+		if !isValidDotEnvKey(key) {
+			return nil, fmt.Errorf("line %d: invalid key %q", lineNumber, key)
+		}
 
 		rawValue := strings.TrimSpace(line[separatorIndex+1:])
 		parsedValue, err := parseDotEnvValue(rawValue)
@@ -64,6 +67,32 @@ func collectNonEmptyDotEnvValues(values map[string]string, keys ...string) []str
 	return result
 }
 
+func isValidDotEnvKey(key string) bool {
+	if key == "" {
+		return false
+	}
+
+	for index, character := range key {
+		isUpper := character >= 'A' && character <= 'Z'
+		isLower := character >= 'a' && character <= 'z'
+		isDigit := character >= '0' && character <= '9'
+		isUnderscore := character == '_'
+
+		if index == 0 {
+			if !(isUpper || isLower || isUnderscore) {
+				return false
+			}
+			continue
+		}
+
+		if !(isUpper || isLower || isDigit || isUnderscore) {
+			return false
+		}
+	}
+
+	return true
+}
+
 func parseDotEnvValue(rawValue string) (string, error) {
 	if rawValue == "" {
 		return "", nil
@@ -84,7 +113,7 @@ func parseDotEnvValue(rawValue string) (string, error) {
 		}
 		return rawValue[1 : len(rawValue)-1], nil
 	}
-	if inlineCommentIndex := strings.Index(rawValue, " #"); inlineCommentIndex >= 0 {
+	if inlineCommentIndex := strings.Index(rawValue, "#"); inlineCommentIndex >= 0 {
 		rawValue = rawValue[:inlineCommentIndex]
 	}
 	return strings.TrimSpace(rawValue), nil

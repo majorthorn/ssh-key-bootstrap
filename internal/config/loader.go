@@ -66,7 +66,7 @@ func resolveDotEnvSource(programOptions *Options, runtimeIO RuntimeIO) (string, 
 func discoverConfigFileNearBinary() (string, error) {
 	executablePath, err := os.Executable()
 	if err != nil {
-		return "", fmt.Errorf("resolve executable path: %w", err)
+		return "", fmt.Errorf("failed to resolve executable path: %w", err)
 	}
 
 	executableDirectory := filepath.Dir(executablePath)
@@ -95,5 +95,8 @@ func promptUseSingleConfigSource(runtimeIO RuntimeIO, displayName, sourcePath st
 
 func fileExists(path string) bool {
 	fileInfo, err := os.Stat(path)
-	return err == nil && !fileInfo.IsDir()
+	if err != nil {
+		return false
+	}
+	return !fileInfo.IsDir()
 }

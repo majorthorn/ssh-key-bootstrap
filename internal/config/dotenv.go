@@ -35,30 +35,45 @@ func ApplyDotEnvWithMetadata(programOptions *Options) (map[string]bool, error) {
 		return nil
 	}
 
-	if serverValue, ok := parsedEnvValues["SERVER"]; ok {
-		_ = setLoaded("server", func() error { programOptions.Server = strings.TrimSpace(serverValue); return nil })
+	setEnvOption := func(envKey, fieldName string, trim bool, setter func(string)) {
+		if value, ok := parsedEnvValues[envKey]; ok {
+			if trim {
+				value = strings.TrimSpace(value)
+			}
+			_ = setLoaded(fieldName, func() error {
+				setter(value)
+				return nil
+			})
+		}
 	}
-	if serversValue, ok := parsedEnvValues["SERVERS"]; ok {
-		_ = setLoaded("servers", func() error { programOptions.Servers = strings.TrimSpace(serversValue); return nil })
-	}
-	if userValue, ok := parsedEnvValues["USER"]; ok {
-		_ = setLoaded("user", func() error { programOptions.User = strings.TrimSpace(userValue); return nil })
-	}
-	if passwordValue, ok := parsedEnvValues["PASSWORD"]; ok {
-		_ = setLoaded("password", func() error { programOptions.Password = passwordValue; return nil })
-	}
-	if passwordSecretRefValue, ok := parsedEnvValues["PASSWORD_SECRET_REF"]; ok {
-		_ = setLoaded("passwordSecretRef", func() error {
-			programOptions.PasswordSecretRef = strings.TrimSpace(passwordSecretRefValue)
-			return nil
-		})
-	}
+
+	setEnvOption("SERVER", "server", true, func(v string) {
+		programOptions.Server = v
+	})
+	setEnvOption("SERVERS", "servers", true, func(v string) {
+		programOptions.Servers = v
+	})
+	setEnvOption("USER", "user", true, func(v string) {
+		programOptions.User = v
+	})
+	setEnvOption("PASSWORD", "password", false, func(v string) {
+		programOptions.Password = v
+	})
+	setEnvOption("PASSWORD_SECRET_REF", "passwordSecretRef", true, func(v string) {
+		programOptions.PasswordSecretRef = v
+	})
+
 	keyInputs := collectNonEmptyDotEnvValues(parsedEnvValues, "KEY", "PUBKEY", "PUBKEY_FILE")
 	if len(keyInputs) > 1 {
 		return nil, fmt.Errorf(".env must set only one of KEY/PUBKEY/PUBKEY_FILE")
 	}
 	if len(keyInputs) == 1 {
-		_ = setLoaded("keyInput", func() error { programOptions.KeyInput = keyInputs[0]; return nil })
+		if err := setLoaded("keyInput", func() error {
+			programOptions.KeyInput = keyInputs[0]
+			return nil
+		}); err != nil {
+			return nil, err
+		}
 	}
 	if portValue, ok := parsedEnvValues["PORT"]; ok {
 		if err := setLoaded("port", func() error {
@@ -97,7 +112,12 @@ func ApplyDotEnvWithMetadata(programOptions *Options) (map[string]bool, error) {
 		}
 	}
 	if knownHostsValue, ok := parsedEnvValues["KNOWN_HOSTS"]; ok {
-		_ = setLoaded("knownHosts", func() error { programOptions.KnownHosts = strings.TrimSpace(knownHostsValue); return nil })
+		if err := setLoaded("knownHosts", func() error {
+			programOptions.KnownHosts = strings.TrimSpace(knownHostsValue)
+			return nil
+		}); err != nil {
+			return nil, err
+		}
 	}
 
 	return loadedFieldNames, nil
