@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const maxDefaultPreviewLength = 80
+
 type configField struct {
 	key   string
 	label string
@@ -35,7 +37,7 @@ func configFields() []configField {
 		{key: "passwordSecretRef", label: "Password Secret Ref", kind: "text", get: func(optionsValue *Options) string { return optionsValue.PasswordSecretRef }},
 		{key: "keyInput", label: "Public Key Input", kind: "publickey", get: func(optionsValue *Options) string { return optionsValue.KeyInput }},
 		{key: "port", label: "Default Port", kind: "text", get: func(optionsValue *Options) string { return fmt.Sprintf("%d", optionsValue.Port) }},
-		{key: "timeoutSec", label: "Timeout (Seconds)", kind: "text", get: func(optionsValue *Options) string { return fmt.Sprintf("%d", optionsValue.TimeoutSec) }},
+		{key: "passwordSecretRef", label: "Password Secret Ref", kind: "password", get: func(optionsValue *Options) string { return optionsValue.PasswordSecretRef }},
 		{key: "insecureIgnoreHostKey", label: "Insecure Ignore Host Key", kind: "text", get: func(optionsValue *Options) string { return fmt.Sprintf("%t", optionsValue.InsecureIgnoreHostKey) }},
 		{key: "knownHosts", label: "Known Hosts Path", kind: "text", get: func(optionsValue *Options) string { return optionsValue.KnownHosts }},
 	}
@@ -47,9 +49,9 @@ func previewFieldValue(field configField, programOptions *Options) string {
 	case "password":
 		return maskSensitiveValue(value)
 	case "publickey":
-		return previewTextValue(value, 120)
+		return maskSensitiveValue(value)
 	default:
-		return previewTextValue(value, 80)
+		return previewTextValue(value, maxDefaultPreviewLength)
 	}
 }
 
@@ -58,10 +60,11 @@ func previewTextValue(value string, maxLength int) string {
 	if trimmedValue == "" {
 		return "<empty>"
 	}
-	if len(trimmedValue) <= maxLength {
+	runes := []rune(trimmedValue)
+	if len(runes) <= maxLength {
 		return trimmedValue
 	}
-	return trimmedValue[:maxLength] + "..."
+	return string(runes[:maxLength]) + "..."
 }
 
 func maskSensitiveValue(value string) string {

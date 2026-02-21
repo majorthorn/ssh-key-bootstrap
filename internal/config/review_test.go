@@ -72,8 +72,8 @@ func TestPreviewHelpers(t *testing.T) {
 		kind: "publickey",
 		get:  func(optionsValue *Options) string { return optionsValue.KeyInput },
 	}, programOptions)
-	if !strings.HasSuffix(keyPreview, "...") {
-		t.Fatalf("public key preview should be truncated: %q", keyPreview)
+	if keyPreview != "<redacted>" {
+		t.Fatalf("public key preview should be redacted: %q", keyPreview)
 	}
 
 	textPreview := previewFieldValue(configField{
