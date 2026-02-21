@@ -54,8 +54,7 @@ func main() {
 	}
 
 	if err := run(); err != nil {
-		var statusErr *statusError
-		if errors.As(err, &statusErr) {
+		if statusErr, ok := errors.AsType[*statusError](err); ok {
 			errorPrintln("Error:", statusErr.err)
 			os.Exit(statusErr.code)
 		}
@@ -116,11 +115,19 @@ func run() error {
 	for _, host := range hosts {
 		if err := addAuthorizedKeyWithStatus(host, publicKey, clientConfig, nil); err != nil {
 			failures++
-			hostRecaps[host] = hostRunRecap{failed: 1}
+			hostRecaps[host] = hostRunRecap{
+				failed:  1,
+				ok:      0,
+				changed: 0,
+			}
 			outputAnsibleHostStatus("failed", host, err.Error())
 			continue
 		}
-		hostRecaps[host] = hostRunRecap{ok: 1, changed: 1}
+		hostRecaps[host] = hostRunRecap{
+			ok:      1,
+			changed: 1,
+			failed:  0,
+		}
 		outputAnsibleHostStatus("changed", host, "")
 	}
 
@@ -134,9 +141,17 @@ func run() error {
 
 func parseFlags() (*options, error) {
 	programOptions := &options{
-		Port:       defaultSSHPort,
-		TimeoutSec: defaultTimeoutSeconds,
-		KnownHosts: defaultKnownHostsPath,
+		Port:                  defaultSSHPort,
+		TimeoutSec:            defaultTimeoutSeconds,
+		KnownHosts:            defaultKnownHostsPath,
+		Server:                "",
+		Servers:               "",
+		User:                  "",
+		Password:              "",
+		PasswordSecretRef:     "",
+		KeyInput:              "",
+		EnvFile:               "",
+		InsecureIgnoreHostKey: false,
 	}
 	normalizeHelpArg()
 	flag.CommandLine.SetOutput(commandOutputWriter())
@@ -172,10 +187,7 @@ func fail(code int, format string, args ...any) error {
 }
 
 func outputAnsibleTask(taskName string) {
-	paddingLength := ansibleTaskPaddingWidth - len(taskName)
-	if paddingLength < 5 {
-		paddingLength = 5
-	}
+	paddingLength := max(ansibleTaskPaddingWidth-len(taskName), 5)
 	outputPrintf("\nTASK [%s] %s\n", taskName, strings.Repeat("*", paddingLength))
 }
 
