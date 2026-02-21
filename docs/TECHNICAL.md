@@ -120,7 +120,7 @@ Interactive `.env` discovery behavior:
 
 ## Explicit dotenv
 
-    ./ssh-key-bootstrap --env ./my.env
+    ./ssh-key-bootstrap --env ./.env
 
 ## Dotenv example with Bitwarden secret ref
 
