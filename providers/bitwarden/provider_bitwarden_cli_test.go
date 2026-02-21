@@ -83,9 +83,9 @@ printf '{"value":"resolved-from-bws"}'
 }
 
 func TestRunAndCaptureOutput(t *testing.T) {
-	t.Run("returns wrapped error when command has output", func(testContext *testing.T) {
-		commandDirectory := testContext.TempDir()
-		createFakeCommand(testContext, commandDirectory, "fail-with-output", `#!/bin/sh
+	t.Run("returns wrapped error when command has output", func(t *testing.T) {
+		commandDirectory := t.TempDir()
+		createFakeCommand(t, commandDirectory, "fail-with-output", `#!/bin/sh
 echo "command failed" >&2
 exit 1
 `)
@@ -94,16 +94,16 @@ exit 1
 		cmd := exec.CommandContext(commandContext, filepath.Join(commandDirectory, "fail-with-output"))
 		_, err := runAndCaptureOutput(commandContext, cmd)
 		if err == nil {
-			testContext.Fatalf("expected command failure")
+			t.Fatalf("expected command failure")
 		}
 		if !strings.Contains(err.Error(), "command failed") {
-			testContext.Fatalf("expected wrapped command output, got %v", err)
+			t.Fatalf("expected wrapped command output, got %v", err)
 		}
 	})
 
-	t.Run("returns original error when command output is empty", func(testContext *testing.T) {
-		commandDirectory := testContext.TempDir()
-		createFakeCommand(testContext, commandDirectory, "fail-without-output", `#!/bin/sh
+	t.Run("returns original error when command output is empty", func(t *testing.T) {
+		commandDirectory := t.TempDir()
+		createFakeCommand(t, commandDirectory, "fail-without-output", `#!/bin/sh
 exit 1
 `)
 
@@ -111,16 +111,16 @@ exit 1
 		cmd := exec.CommandContext(commandContext, filepath.Join(commandDirectory, "fail-without-output"))
 		_, err := runAndCaptureOutput(commandContext, cmd)
 		if err == nil {
-			testContext.Fatalf("expected command failure")
+			t.Fatalf("expected command failure")
 		}
 		if strings.Contains(err.Error(), ": ") {
-			testContext.Fatalf("expected original error without wrapped output, got %v", err)
+			t.Fatalf("expected original error without wrapped output, got %v", err)
 		}
 	})
 
-	t.Run("returns timeout error when context deadline is exceeded", func(testContext *testing.T) {
-		commandDirectory := testContext.TempDir()
-		createFakeCommand(testContext, commandDirectory, "slow-command", `#!/bin/sh
+	t.Run("returns timeout error when context deadline is exceeded", func(t *testing.T) {
+		commandDirectory := t.TempDir()
+		createFakeCommand(t, commandDirectory, "slow-command", `#!/bin/sh
 sleep 1
 `)
 
@@ -130,20 +130,20 @@ sleep 1
 		cmd := exec.CommandContext(commandContext, filepath.Join(commandDirectory, "slow-command"))
 		_, err := runAndCaptureOutput(commandContext, cmd)
 		if err == nil {
-			testContext.Fatalf("expected timeout error")
+			t.Fatalf("expected timeout error")
 		}
 		if !strings.Contains(err.Error(), "command timed out after") {
-			testContext.Fatalf("expected timeout message, got %v", err)
+			t.Fatalf("expected timeout message, got %v", err)
 		}
 	})
 }
 
-func createFakeCommand(testContext *testing.T, directory, commandName, scriptBody string) {
-	testContext.Helper()
+func createFakeCommand(t *testing.T, directory, commandName, scriptBody string) {
+	t.Helper()
 
 	commandPath := filepath.Join(directory, commandName)
 	writeErr := os.WriteFile(commandPath, []byte(scriptBody), 0o700)
 	if writeErr != nil {
-		testContext.Fatalf("write fake command %q: %v", commandName, writeErr)
+		t.Fatalf("write fake command %q: %v", commandName, writeErr)
 	}
 }

@@ -1,22 +1,35 @@
 package config
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
 
-type testRuntimeIO struct{}
+type testRuntimeIO struct {
+	lines []string
+}
 
-func (testRuntimeIO) PromptLine(string) (string, error) { return "", nil }
-func (testRuntimeIO) Println(arguments ...any)          {}
-func (testRuntimeIO) Printf(string, ...any)             {}
-func (testRuntimeIO) IsInteractive() bool               { return true }
+func (runtimeIO *testRuntimeIO) PromptLine(string) (string, error) { return "", nil }
+func (runtimeIO *testRuntimeIO) Println(arguments ...any) {
+	runtimeIO.lines = append(runtimeIO.lines, fmt.Sprintln(arguments...))
+}
+func (runtimeIO *testRuntimeIO) Printf(format string, arguments ...any) {
+	runtimeIO.lines = append(runtimeIO.lines, fmt.Sprintf(format, arguments...))
+}
+func (*testRuntimeIO) IsInteractive() bool { return true }
 
 func TestConfirmLoadedConfigFieldsNoLoadedValues(t *testing.T) {
 	t.Parallel()
 
 	programOptions := &Options{}
-	confirmLoadedConfigFields(programOptions, map[string]bool{}, testRuntimeIO{})
+	runtimeIO := &testRuntimeIO{}
+
+	confirmLoadedConfigFields(programOptions, map[string]bool{}, runtimeIO)
+
+	if len(runtimeIO.lines) != 0 {
+		t.Fatalf("expected no output for no loaded values, got %q", strings.Join(runtimeIO.lines, ""))
+	}
 }
 
 func TestConfirmLoadedConfigFieldsLoadedValues(t *testing.T) {
@@ -27,12 +40,27 @@ func TestConfirmLoadedConfigFieldsLoadedValues(t *testing.T) {
 		Port:     22,
 		Password: "super-secret",
 	}
+	runtimeIO := &testRuntimeIO{}
 
 	confirmLoadedConfigFields(programOptions, map[string]bool{
 		"server":   true,
 		"port":     true,
 		"password": true,
-	}, testRuntimeIO{})
+	}, runtimeIO)
+
+	output := strings.Join(runtimeIO.lines, "")
+	if !strings.Contains(output, "Loaded configuration values:\n") {
+		t.Fatalf("expected header in output, got %q", output)
+	}
+	if !strings.Contains(output, "Server: app01\n") {
+		t.Fatalf("expected server line in output, got %q", output)
+	}
+	if !strings.Contains(output, "Default Port: 22\n") {
+		t.Fatalf("expected port line in output, got %q", output)
+	}
+	if !strings.Contains(output, "SSH Password: <redacted>\n") {
+		t.Fatalf("expected redacted password in output, got %q", output)
+	}
 }
 
 func TestPreviewHelpers(t *testing.T) {

@@ -591,33 +591,33 @@ func TestFillMissingInputsSkipsAlreadySetFields(t *testing.T) {
 }
 
 func TestValidateOptionsAdditionalErrorPaths(t *testing.T) {
-	t.Run("invalid port", func(testContext *testing.T) {
+	t.Run("invalid port", func(t *testing.T) {
 		opts := &options{Port: 0, TimeoutSec: 10}
 		err := validateOptions(opts)
 		if err == nil || !strings.Contains(err.Error(), "port must be in range") {
-			testContext.Fatalf("expected invalid port error, got %v", err)
+			t.Fatalf("expected invalid port error, got %v", err)
 		}
 	})
 
-	t.Run("invalid timeout", func(testContext *testing.T) {
+	t.Run("invalid timeout", func(t *testing.T) {
 		opts := &options{Port: 22, TimeoutSec: 0}
 		err := validateOptions(opts)
 		if err == nil || !strings.Contains(err.Error(), "timeout must be greater than zero") {
-			testContext.Fatalf("expected invalid timeout error, got %v", err)
+			t.Fatalf("expected invalid timeout error, got %v", err)
 		}
 	})
 
-	t.Run("secret resolver failure", func(testContext *testing.T) {
+	t.Run("secret resolver failure", func(t *testing.T) {
 		originalResolver := resolvePasswordFromSecretRef
 		resolvePasswordFromSecretRef = func(string) (string, error) {
 			return "", errors.New("secret backend unavailable")
 		}
-		testContext.Cleanup(func() { resolvePasswordFromSecretRef = originalResolver })
+		t.Cleanup(func() { resolvePasswordFromSecretRef = originalResolver })
 
 		opts := &options{Port: 22, TimeoutSec: 10, PasswordSecretRef: "bw://prod/ssh"}
 		err := validateOptions(opts)
 		if err == nil || !strings.Contains(err.Error(), "resolve password secret reference") {
-			testContext.Fatalf("expected secret resolver error, got %v", err)
+			t.Fatalf("expected secret resolver error, got %v", err)
 		}
 	})
 }

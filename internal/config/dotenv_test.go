@@ -7,6 +7,19 @@ import (
 	"testing"
 )
 
+var expectedDotEnvLoadedFields = []string{
+	"server",
+	"servers",
+	"user",
+	"password",
+	"passwordSecretRef",
+	"keyInput",
+	"port",
+	"timeoutSec",
+	"insecureIgnoreHostKey",
+	"knownHosts",
+}
+
 func writeDotEnv(t *testing.T, content string) string {
 	t.Helper()
 
@@ -34,7 +47,17 @@ func TestApplyDotEnvWithMetadataNoEnvFile(t *testing.T) {
 func TestApplyDotEnvWithMetadataLoadsFields(t *testing.T) {
 	t.Parallel()
 
-	dotEnvPath := writeDotEnv(t, "SERVER=host01\nSERVERS=a,b\nUSER=alice\nPASSWORD='secret value'\nPASSWORD_SECRET_REF=bw://vault/item\nPUBKEY_FILE=~/.ssh/id_ed25519.pub\nPORT=2201\nTIMEOUT=45\nINSECURE_IGNORE_HOST_KEY=true\nKNOWN_HOSTS=~/.ssh/known_hosts\n")
+	dotEnvPath := writeDotEnv(t, `SERVER=host01
+SERVERS=a,b
+USER=alice
+PASSWORD='secret value'
+PASSWORD_SECRET_REF=bw://vault/item
+PUBKEY_FILE=~/.ssh/id_ed25519.pub
+PORT=2201
+TIMEOUT=45
+INSECURE_IGNORE_HOST_KEY=true
+KNOWN_HOSTS=~/.ssh/known_hosts
+`)
 	opts := &Options{EnvFile: dotEnvPath}
 
 	loaded, err := ApplyDotEnvWithMetadata(opts)
@@ -73,7 +96,7 @@ func TestApplyDotEnvWithMetadataLoadsFields(t *testing.T) {
 		t.Fatalf("KnownHosts = %q, want %q", opts.KnownHosts, "~/.ssh/known_hosts")
 	}
 
-	for _, field := range []string{"server", "servers", "user", "password", "passwordSecretRef", "keyInput", "port", "timeoutSec", "insecureIgnoreHostKey", "knownHosts"} {
+	for _, field := range expectedDotEnvLoadedFields {
 		if !loaded[field] {
 			t.Fatalf("loaded[%q] = false, want true", field)
 		}

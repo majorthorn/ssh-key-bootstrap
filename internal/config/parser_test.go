@@ -48,6 +48,54 @@ func TestParseDotEnvContentInvalidLine(t *testing.T) {
 	}
 }
 
+func TestParseDotEnvContentInvalidKey(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "containsSpace", content: "SSH USER=admin\n"},
+		{name: "startsWithDigit", content: "1SERVER=app01\n"},
+		{name: "containsHyphen", content: "KNOWN-HOSTS=~/.ssh/known_hosts\n"},
+	}
+
+	for _, testCase := range tests {
+		testCase := testCase
+		t.Run(testCase.name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := parseDotEnvContent(testCase.content)
+			if err == nil {
+				t.Fatalf("expected parse error for invalid key")
+			}
+			if !strings.Contains(err.Error(), "invalid key") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestParseDotEnvContentValidKeyFormats(t *testing.T) {
+	t.Parallel()
+
+	content := "_SERVER=app01\nserver2=app02\nSSH_USER=admin\n"
+	parsed, err := parseDotEnvContent(content)
+	if err != nil {
+		t.Fatalf("parseDotEnvContent() error = %v", err)
+	}
+
+	if parsed["_SERVER"] != "app01" {
+		t.Fatalf("_SERVER = %q, want %q", parsed["_SERVER"], "app01")
+	}
+	if parsed["SERVER2"] != "app02" {
+		t.Fatalf("SERVER2 = %q, want %q", parsed["SERVER2"], "app02")
+	}
+	if parsed["SSH_USER"] != "admin" {
+		t.Fatalf("SSH_USER = %q, want %q", parsed["SSH_USER"], "admin")
+	}
+}
+
 func TestParseDotEnvValueCases(t *testing.T) {
 	t.Parallel()
 

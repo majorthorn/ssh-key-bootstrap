@@ -228,35 +228,35 @@ func ensureDotEnvNearBinary(t *testing.T, content string) string {
 func TestResolveDotEnvSourceInteractiveDiscovery(t *testing.T) {
 	dotEnvPath := ensureDotEnvNearBinary(t, "USER=discover\n")
 
-	t.Run("accepts discovered dot env", func(testContext *testing.T) {
+	t.Run("accepts discovered dot env", func(t *testing.T) {
 		runtime := &scriptedRuntimeIO{interactive: true, answers: []string{"y"}}
 		opts := &Options{}
 
 		path, err := resolveDotEnvSource(opts, runtime)
 		if err != nil {
-			testContext.Fatalf("resolveDotEnvSource() error = %v", err)
+			t.Fatalf("resolveDotEnvSource() error = %v", err)
 		}
 		if path != dotEnvPath {
-			testContext.Fatalf("resolveDotEnvSource() = %q, want %q", path, dotEnvPath)
+			t.Fatalf("resolveDotEnvSource() = %q, want %q", path, dotEnvPath)
 		}
 		if runtime.promptCalls != 1 {
-			testContext.Fatalf("prompt calls = %d, want 1", runtime.promptCalls)
+			t.Fatalf("prompt calls = %d, want 1", runtime.promptCalls)
 		}
 	})
 
-	t.Run("rejects discovered dot env", func(testContext *testing.T) {
+	t.Run("rejects discovered dot env", func(t *testing.T) {
 		runtime := &scriptedRuntimeIO{interactive: true, answers: []string{"n"}}
 		opts := &Options{}
 
 		path, err := resolveDotEnvSource(opts, runtime)
 		if err != nil {
-			testContext.Fatalf("resolveDotEnvSource() error = %v", err)
+			t.Fatalf("resolveDotEnvSource() error = %v", err)
 		}
 		if path != "" {
-			testContext.Fatalf("resolveDotEnvSource() = %q, want empty", path)
+			t.Fatalf("resolveDotEnvSource() = %q, want empty", path)
 		}
 		if runtime.promptCalls != 1 {
-			testContext.Fatalf("prompt calls = %d, want 1", runtime.promptCalls)
+			t.Fatalf("prompt calls = %d, want 1", runtime.promptCalls)
 		}
 	})
 }
