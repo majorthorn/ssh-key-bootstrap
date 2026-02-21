@@ -15,8 +15,30 @@ import (
 	"golang.org/x/term"
 )
 
-var standardOutputWriter io.Writer = os.Stdout
-var standardErrorWriter io.Writer = os.Stderr
+var (
+	standardWritersMu    sync.RWMutex
+	standardOutputWriter io.Writer = os.Stdout
+	standardErrorWriter  io.Writer = os.Stderr
+)
+
+func getStandardOutputWriter() io.Writer {
+	standardWritersMu.RLock()
+	defer standardWritersMu.RUnlock()
+	return standardOutputWriter
+}
+
+func getStandardErrorWriter() io.Writer {
+	standardWritersMu.RLock()
+	defer standardWritersMu.RUnlock()
+	return standardErrorWriter
+}
+
+func setStandardWriters(outputWriter, errorWriter io.Writer) {
+	standardWritersMu.Lock()
+	defer standardWritersMu.Unlock()
+	standardOutputWriter = outputWriter
+	standardErrorWriter = errorWriter
+}
 
 type timestampedLineWriter struct {
 	mu      sync.Mutex
@@ -44,7 +66,7 @@ func (timestampWriter *timestampedLineWriter) Write(data []byte) (int, error) {
 		}
 		lineBytes := timestampWriter.pending[:lineEndIndex]
 		if err := timestampWriter.writeLineLocked(lineBytes, true); err != nil {
-			return 0, err
+			return len(data), err
 		}
 		timestampWriter.pending = timestampWriter.pending[lineEndIndex+1:]
 	}
@@ -88,29 +110,29 @@ func promptLine(reader *bufio.Reader, label string) (string, error) {
 }
 
 func outputPrint(arguments ...any) {
-	_, _ = fmt.Fprint(standardOutputWriter, arguments...)
+	_, _ = fmt.Fprint(getStandardOutputWriter(), arguments...)
 }
 
 func outputPrintf(format string, arguments ...any) {
-	_, _ = fmt.Fprintf(standardOutputWriter, format, arguments...)
+	_, _ = fmt.Fprintf(getStandardOutputWriter(), format, arguments...)
 }
 
 func outputPrintln(arguments ...any) {
-	_, _ = fmt.Fprintln(standardOutputWriter, arguments...)
+	_, _ = fmt.Fprintln(getStandardOutputWriter(), arguments...)
 }
 
 func errorPrintln(arguments ...any) {
-	_, _ = fmt.Fprintln(standardErrorWriter, arguments...)
+	_, _ = fmt.Fprintln(getStandardErrorWriter(), arguments...)
 }
 
 func commandOutputWriter() io.Writer {
-	return standardErrorWriter
+	return getStandardErrorWriter()
 }
 
 func setupRunLogFile(applicationName string) (func(), error) {
 	executablePath, err := os.Executable()
 	if err != nil {
-		return nil, fmt.Errorf("resolve executable path for run log: %w", err)
+		return nil, fmt.Errorf("get executable path: %w", err)
 	}
 
 	logDirectory := filepath.Dir(executablePath)
@@ -121,12 +143,13 @@ func setupRunLogFile(applicationName string) (func(), error) {
 	}
 	timestampedLogWriter := newTimestampedLineWriter(logFileHandle)
 
-	standardOutputWriter = io.MultiWriter(os.Stdout, timestampedLogWriter)
-	standardErrorWriter = io.MultiWriter(os.Stderr, timestampedLogWriter)
+	setStandardWriters(
+		io.MultiWriter(os.Stdout, timestampedLogWriter),
+		io.MultiWriter(os.Stderr, timestampedLogWriter),
+	)
 
 	cleanupRunLog := func() {
-		standardOutputWriter = os.Stdout
-		standardErrorWriter = os.Stderr
+		setStandardWriters(os.Stdout, os.Stderr)
 		_ = timestampedLogWriter.Close()
 		_ = logFileHandle.Close()
 	}

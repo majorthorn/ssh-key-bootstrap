@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
-	"golang.org/x/crypto/ssh"
 	"ssh-key-bootstrap/providers"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // TestNormalizeHost verifies ports/default handling across host inputs.
@@ -506,6 +508,63 @@ func TestBuildHostKeyCallbackUnknownHostAccepted(testContext *testing.T) {
 	knownHostsContent := string(knownHostsBytes)
 	if !strings.Contains(knownHostsContent, "example.com") || !strings.Contains(knownHostsContent, hostPublicKey.Type()) {
 		testContext.Fatalf("known_hosts missing trusted entry: %q", knownHostsContent)
+	}
+}
+
+// TestBuildHostKeyCallbackUnknownHostConcurrent verifies concurrent unknown-host checks prompt once and persist safely.
+func TestBuildHostKeyCallbackUnknownHostConcurrent(testContext *testing.T) {
+	tempDirectory := testContext.TempDir()
+	knownHostsPath := filepath.Join(tempDirectory, "known_hosts")
+	hostPublicKey := parsePublicKeyFromAuthorizedLine(testContext, generateTestKey(testContext))
+
+	originalPrompter := confirmUnknownHost
+	promptCalls := 0
+	var promptGuard sync.Mutex
+	confirmUnknownHost = func(hostname, path string, key ssh.PublicKey) (bool, error) {
+		promptGuard.Lock()
+		promptCalls++
+		promptGuard.Unlock()
+		return true, nil
+	}
+	testContext.Cleanup(func() { confirmUnknownHost = originalPrompter })
+
+	hostKeyCallback, callbackErr := buildHostKeyCallback(false, knownHostsPath)
+	if callbackErr != nil {
+		testContext.Fatalf("build host key callback: %v", callbackErr)
+	}
+
+	remoteAddress := &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 22}
+
+	const parallelCalls = 24
+	errorsCh := make(chan error, parallelCalls)
+	var waitGroup sync.WaitGroup
+	for range parallelCalls {
+		waitGroup.Add(1)
+		go func() {
+			defer waitGroup.Done()
+			errorsCh <- hostKeyCallback("example.com:22", remoteAddress, hostPublicKey)
+		}()
+	}
+	waitGroup.Wait()
+	close(errorsCh)
+
+	for callbackErr := range errorsCh {
+		if callbackErr != nil {
+			testContext.Fatalf("concurrent callback error: %v", callbackErr)
+		}
+	}
+
+	if promptCalls != 1 {
+		testContext.Fatalf("expected 1 trust prompt, got %d", promptCalls)
+	}
+
+	knownHostsBytes, readErr := os.ReadFile(knownHostsPath)
+	if readErr != nil {
+		testContext.Fatalf("read known_hosts: %v", readErr)
+	}
+	knownHostsContent := string(knownHostsBytes)
+	if strings.Count(knownHostsContent, "example.com") != 1 {
+		testContext.Fatalf("expected one trusted entry, got content: %q", knownHostsContent)
 	}
 }
 

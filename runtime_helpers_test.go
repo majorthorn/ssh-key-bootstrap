@@ -42,17 +42,15 @@ func setCommandLineForTest(t *testing.T, args []string) {
 func captureWriters(t *testing.T) (*bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
 
-	originalOutput := standardOutputWriter
-	originalError := standardErrorWriter
+	originalOutput := getStandardOutputWriter()
+	originalError := getStandardErrorWriter()
 
 	outputBuffer := &bytes.Buffer{}
 	errorBuffer := &bytes.Buffer{}
-	standardOutputWriter = outputBuffer
-	standardErrorWriter = errorBuffer
+	setStandardWriters(outputBuffer, errorBuffer)
 
 	t.Cleanup(func() {
-		standardOutputWriter = originalOutput
-		standardErrorWriter = originalError
+		setStandardWriters(originalOutput, originalError)
 	})
 
 	return outputBuffer, errorBuffer
@@ -662,8 +660,8 @@ func TestTimestampedLineWriterWriteError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected write error")
 	}
-	if n != 0 {
-		t.Fatalf("Write() bytes = %d, want %d when write fails", n, 0)
+	if n != len("line\n") {
+		t.Fatalf("Write() bytes = %d, want %d when write fails", n, len("line\n"))
 	}
 }
 

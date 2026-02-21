@@ -54,38 +54,44 @@ func buildHostKeyCallback(insecure bool, knownHostsPath string) (ssh.HostKeyCall
 		return nil, fmt.Errorf("load known_hosts: %w", err)
 	}
 
-	var callbackGuard sync.Mutex
+	type hostKeyCallbackState struct {
+		guard    sync.Mutex
+		callback ssh.HostKeyCallback
+	}
+	state := &hostKeyCallbackState{callback: callback}
+
 	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-		callbackGuard.Lock()
-		defer callbackGuard.Unlock()
+		state.guard.Lock()
+		defer state.guard.Unlock()
 
-		if callbackErr := callback(hostname, remote, key); callbackErr == nil {
-			return nil
-		} else {
-			var keyErr *knownhosts.KeyError
-			if !errors.As(callbackErr, &keyErr) || len(keyErr.Want) > 0 {
-				return callbackErr
-			}
-
-			trustHost, promptErr := confirmUnknownHost(hostname, path, key)
-			if promptErr != nil {
-				return promptErr
-			}
-			if !trustHost {
-				return fmt.Errorf("host key for %s rejected by user", hostname)
-			}
-
-			if appendErr := appendKnownHost(path, hostname, key); appendErr != nil {
-				return fmt.Errorf("store trusted host key: %w", appendErr)
-			}
-
-			reloadedCallback, reloadErr := knownhosts.New(path)
-			if reloadErr != nil {
-				return fmt.Errorf("reload known_hosts: %w", reloadErr)
-			}
-			callback = reloadedCallback
+		callbackErr := state.callback(hostname, remote, key)
+		if callbackErr == nil {
 			return nil
 		}
+
+		var keyErr *knownhosts.KeyError
+		if !errors.As(callbackErr, &keyErr) || len(keyErr.Want) > 0 {
+			return callbackErr
+		}
+
+		trustHost, promptErr := confirmUnknownHost(hostname, path, key)
+		if promptErr != nil {
+			return promptErr
+		}
+		if !trustHost {
+			return fmt.Errorf("host key for %s rejected by user", hostname)
+		}
+
+		if appendErr := appendKnownHost(path, hostname, key); appendErr != nil {
+			return fmt.Errorf("store trusted host key: %w", appendErr)
+		}
+
+		reloadedCallback, reloadErr := knownhosts.New(path)
+		if reloadErr != nil {
+			return fmt.Errorf("reload known_hosts: %w", reloadErr)
+		}
+		state.callback = reloadedCallback
+		return nil
 	}, nil
 }
 
@@ -243,9 +249,7 @@ func normalizeHost(rawHost string, defaultPort int) (string, error) {
 		if strings.TrimSpace(host) == "" {
 			return "", errors.New("missing host")
 		}
-		if _, err := strconv.Atoi(port); err != nil {
-			return "", fmt.Errorf("invalid port %q", port)
-		}
+
 		if _, err := net.LookupPort("tcp", port); err != nil {
 			return "", fmt.Errorf("invalid port %q", port)
 		}
@@ -299,7 +303,7 @@ func parsePublicKeyFromRawInput(rawKeyInput string) (string, error) {
 }
 
 func extractSingleKey(rawKeyInput string) (string, error) {
-	extractedKey := ""
+	var extractedKey string
 	scanner := bufio.NewScanner(strings.NewReader(rawKeyInput))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
