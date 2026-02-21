@@ -42,6 +42,9 @@ type hostRunRecap struct {
 }
 
 func (statusErr *statusError) Error() string {
+	if statusErr == nil || statusErr.err == nil {
+		return ""
+	}
 	return statusErr.err.Error()
 }
 

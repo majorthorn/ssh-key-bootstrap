@@ -16,6 +16,9 @@ type Provider interface {
 var (
 	providerRegistryMu sync.RWMutex
 	providerRegistry   []Provider
+
+	ErrEmptySecretReference = errors.New("secret reference is empty")
+	ErrNoProvidersConfigured = errors.New("no providers configured")
 )
 
 func RegisterProvider(provider Provider) {
@@ -32,6 +35,9 @@ func RegisterProvider(provider Provider) {
 	defer providerRegistryMu.Unlock()
 
 	for _, registeredProvider := range providerRegistry {
+		if registeredProvider == nil {
+			continue
+		}
 		if strings.EqualFold(strings.TrimSpace(registeredProvider.Name()), providerName) {
 			return
 		}
@@ -43,22 +49,36 @@ func DefaultProviders() []Provider {
 	providerRegistryMu.RLock()
 	defer providerRegistryMu.RUnlock()
 
-	registeredProviders := make([]Provider, len(providerRegistry))
-	copy(registeredProviders, providerRegistry)
+	registeredProviders := make([]Provider, 0, len(providerRegistry))
+	for _, provider := range providerRegistry {
+		if provider == nil {
+			continue
+		}
+		if strings.TrimSpace(provider.Name()) == "" {
+			continue
+		}
+		registeredProviders = append(registeredProviders, provider)
+	}
 	return registeredProviders
 }
 
 func ResolveSecretReference(secretRef string, providers []Provider) (string, error) {
 	trimmedRef := strings.TrimSpace(secretRef)
 	if trimmedRef == "" {
-		return "", errors.New("secret reference is empty")
+		return "", ErrEmptySecretReference
 	}
 	if len(providers) == 0 {
-		return "", errors.New("no providers configured")
+		return "", ErrNoProvidersConfigured
 	}
 
 	var resolveErrors []string
+	hasUsableProvider := false
 	for _, provider := range providers {
+		if provider == nil {
+			continue
+		}
+		hasUsableProvider = true
+
 		providerName := provider.Name()
 		if strings.TrimSpace(providerName) == "" {
 			providerName = "<unnamed provider>"
@@ -76,6 +96,10 @@ func ResolveSecretReference(secretRef string, providers []Provider) (string, err
 			return strings.TrimSpace(resolvedValue), nil
 		}
 		resolveErrors = append(resolveErrors, fmt.Sprintf("%s: %v", providerName, err))
+	}
+
+	if !hasUsableProvider {
+		return "", ErrNoProvidersConfigured
 	}
 
 	if len(resolveErrors) == 0 {

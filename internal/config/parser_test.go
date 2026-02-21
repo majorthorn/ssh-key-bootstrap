@@ -107,8 +107,11 @@ func TestParseDotEnvValueCases(t *testing.T) {
 	}{
 		{name: "empty", raw: "", want: ""},
 		{name: "doubleQuoted", raw: "\"hello\\nworld\"", want: "hello\nworld"},
+		{name: "doubleQuotedHashPreserved", raw: "\"value#hash\"", want: "value#hash"},
 		{name: "singleQuoted", raw: "' value # literal '", want: " value # literal "},
+		{name: "singleQuotedHashPreserved", raw: "'value#hash'", want: "value#hash"},
 		{name: "inlineComment", raw: "value # comment", want: "value"},
+		{name: "inlineCommentNoSpace", raw: "value#comment", want: "value"},
 		{name: "plainTrimmed", raw: "  value  ", want: "value"},
 		{name: "unterminatedDouble", raw: "\"value", isErr: true},
 		{name: "unterminatedSingle", raw: "'value", isErr: true},

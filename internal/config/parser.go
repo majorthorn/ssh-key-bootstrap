@@ -113,6 +113,8 @@ func parseDotEnvValue(rawValue string) (string, error) {
 		}
 		return rawValue[1 : len(rawValue)-1], nil
 	}
+	// For unquoted values, treat '#' as the start of an inline comment.
+	// To preserve '#' in values, use single or double quotes.
 	if inlineCommentIndex := strings.Index(rawValue, "#"); inlineCommentIndex >= 0 {
 		rawValue = rawValue[:inlineCommentIndex]
 	}

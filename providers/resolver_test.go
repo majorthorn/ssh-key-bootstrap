@@ -56,8 +56,38 @@ func TestResolveSecretReferenceNoProvidersConfigured(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected no-providers-configured error")
 	}
+	if !errors.Is(err, ErrNoProvidersConfigured) {
+		t.Fatalf("expected ErrNoProvidersConfigured, got %v", err)
+	}
 	if !strings.Contains(err.Error(), "no providers configured") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveSecretReferenceAllNilProviders(t *testing.T) {
+	t.Parallel()
+
+	_, err := ResolveSecretReference("bw://prod-ssh", []Provider{nil, nil})
+	if err == nil {
+		t.Fatalf("expected no-providers-configured error")
+	}
+	if !errors.Is(err, ErrNoProvidersConfigured) {
+		t.Fatalf("expected ErrNoProvidersConfigured, got %v", err)
+	}
+}
+
+func TestResolveSecretReferenceSkipsNilProviders(t *testing.T) {
+	t.Parallel()
+
+	secretValue, err := ResolveSecretReference("bw://prod-ssh", []Provider{
+		nil,
+		fakeProvider{name: "provider-a", supports: true, value: "secret-value"},
+	})
+	if err != nil {
+		t.Fatalf("resolve secret with nil provider present: %v", err)
+	}
+	if secretValue != "secret-value" {
+		t.Fatalf("got %q want %q", secretValue, "secret-value")
 	}
 }
 
@@ -80,6 +110,9 @@ func TestResolveSecretReferenceEmptyRef(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatalf("expected empty-ref error")
+	}
+	if !errors.Is(err, ErrEmptySecretReference) {
+		t.Fatalf("expected ErrEmptySecretReference, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "secret reference is empty") {
 		t.Fatalf("unexpected error: %v", err)
@@ -131,6 +164,25 @@ func TestRegisterProviderIgnoresNilAndBlankName(t *testing.T) {
 	}
 }
 
+func TestRegisterProviderSkipsNilRegistryEntries(t *testing.T) {
+	providerRegistryMu.Lock()
+	providerRegistry = []Provider{nil}
+	providerRegistryMu.Unlock()
+
+	RegisterProvider(fakeProvider{name: "safe-provider", supports: true, value: "ok"})
+
+	registered := DefaultProviders()
+	if len(registered) != 1 {
+		t.Fatalf("expected 1 valid registered provider, got %d", len(registered))
+	}
+	if registered[0] == nil {
+		t.Fatalf("expected first entry to be a registered provider")
+	}
+	if !strings.EqualFold(registered[0].Name(), "safe-provider") {
+		t.Fatalf("unexpected provider name %q", registered[0].Name())
+	}
+}
+
 func TestDefaultProvidersReturnsCopy(t *testing.T) {
 	providerRegistryMu.Lock()
 	providerRegistry = nil
@@ -151,5 +203,23 @@ func TestDefaultProvidersReturnsCopy(t *testing.T) {
 	}
 	if !strings.EqualFold(originalRegistry[0].Name(), "copy-check-provider") {
 		t.Fatalf("registry was mutated through returned slice: %q", originalRegistry[0].Name())
+	}
+}
+
+func TestDefaultProvidersFiltersInvalidEntries(t *testing.T) {
+	providerRegistryMu.Lock()
+	providerRegistry = []Provider{
+		nil,
+		fakeProvider{name: "   ", supports: true, value: "ignored"},
+		fakeProvider{name: "valid-provider", supports: true, value: "ok"},
+	}
+	providerRegistryMu.Unlock()
+
+	registered := DefaultProviders()
+	if len(registered) != 1 {
+		t.Fatalf("expected only valid providers, got %d", len(registered))
+	}
+	if !strings.EqualFold(registered[0].Name(), "valid-provider") {
+		t.Fatalf("unexpected provider name %q", registered[0].Name())
 	}
 }

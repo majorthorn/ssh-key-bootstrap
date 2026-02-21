@@ -106,7 +106,11 @@ func promptLine(reader *bufio.Reader, label string) (string, error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
-	return strings.TrimSpace(line), nil
+	trimmedLine := strings.TrimSpace(line)
+	if errors.Is(err, io.EOF) && trimmedLine == "" {
+		return "", io.EOF
+	}
+	return trimmedLine, nil
 }
 
 func outputPrint(arguments ...any) {

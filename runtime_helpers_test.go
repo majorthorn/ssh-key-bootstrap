@@ -176,6 +176,18 @@ func TestStatusErrorError(t *testing.T) {
 	}
 }
 
+func TestStatusErrorErrorNilSafe(t *testing.T) {
+	var statusErr *statusError
+	if got := statusErr.Error(); got != "" {
+		t.Fatalf("nil statusError.Error() = %q, want empty", got)
+	}
+
+	statusErr = &statusError{code: 2}
+	if got := statusErr.Error(); got != "" {
+		t.Fatalf("statusError with nil err returned %q, want empty", got)
+	}
+}
+
 func TestFailReturnsStatusError(t *testing.T) {
 	err := fail(7, "bad input: %s", "value")
 
@@ -532,6 +544,21 @@ func TestPromptPasswordReturnsReaderErrorWhenNotTerminal(t *testing.T) {
 	}
 }
 
+func TestPromptPasswordReturnsEOFWhenNotTerminalAndNoInput(t *testing.T) {
+	captureWriters(t)
+	stubPromptPasswordHooks(
+		t,
+		func(*os.File) bool { return false },
+		func(*os.File) ([]byte, error) { return nil, nil },
+	)
+
+	reader := bufio.NewReader(strings.NewReader(""))
+	_, err := promptPassword(reader, os.Stdin, "SSH password: ")
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("expected io.EOF, got %v", err)
+	}
+}
+
 func TestFillMissingInputsPopulatesEmptyFields(t *testing.T) {
 	if isTerminal(os.Stdin) {
 		t.Skip("stdin is a terminal; this test depends on non-interactive reads")
@@ -566,7 +593,23 @@ func TestFillMissingInputsPropagatesPromptError(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected fillMissingInputs() error")
 	}
+	if !strings.Contains(err.Error(), "read SSH username") {
+		t.Fatalf("expected field-context error, got %v", err)
+	}
 	if !strings.Contains(err.Error(), "forced read failure") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestFillMissingInputsReturnsEOFForMissingRequiredInput(t *testing.T) {
+	captureWriters(t)
+	reader := bufio.NewReader(strings.NewReader(""))
+
+	err := fillMissingInputs(reader, &options{})
+	if err == nil {
+		t.Fatalf("expected fillMissingInputs() EOF-derived error")
+	}
+	if !strings.Contains(err.Error(), "SSH username is required but input ended (EOF)") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -732,6 +775,16 @@ func TestPromptLineReturnsReadError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "forced read failure") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestPromptLineReturnsEOFWhenEmptyInput(t *testing.T) {
+	captureWriters(t)
+	reader := bufio.NewReader(strings.NewReader(""))
+
+	_, err := promptLine(reader, "Prompt: ")
+	if !errors.Is(err, io.EOF) {
+		t.Fatalf("expected io.EOF, got %v", err)
 	}
 }
 

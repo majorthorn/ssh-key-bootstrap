@@ -44,14 +44,14 @@ func fillMissingInputs(inputReader *bufio.Reader, programOptions *options) error
 	if strings.TrimSpace(programOptions.User) == "" {
 		programOptions.User, err = promptRequired(inputReader, "SSH username: ")
 		if err != nil {
-			return err
+			return wrapMissingInputError("SSH username", err)
 		}
 	}
 
 	if strings.TrimSpace(programOptions.Password) == "" {
 		programOptions.Password, err = promptPassword(inputReader, os.Stdin, "SSH password: ")
 		if err != nil {
-			return err
+			return wrapMissingInputError("SSH password", err)
 		}
 	}
 
@@ -59,18 +59,25 @@ func fillMissingInputs(inputReader *bufio.Reader, programOptions *options) error
 		strings.TrimSpace(programOptions.Servers) == "" {
 		programOptions.Servers, err = promptRequired(inputReader, "Servers (comma-separated, host or host:port): ")
 		if err != nil {
-			return err
+			return wrapMissingInputError("Servers", err)
 		}
 	}
 
 	if strings.TrimSpace(programOptions.KeyInput) == "" {
 		programOptions.KeyInput, err = promptRequired(inputReader, "Public key text or path to public key file: ")
 		if err != nil {
-			return err
+			return wrapMissingInputError("Public key", err)
 		}
 	}
 
 	return nil
+}
+
+func wrapMissingInputError(fieldName string, err error) error {
+	if errors.Is(err, io.EOF) {
+		return fmt.Errorf("%s is required but input ended (EOF)", fieldName)
+	}
+	return fmt.Errorf("read %s: %w", fieldName, err)
 }
 
 func promptRequired(reader *bufio.Reader, label string) (string, error) {
@@ -111,6 +118,9 @@ func promptPassword(reader *bufio.Reader, terminalInput *os.File, label string) 
 				return "", err
 			}
 			passwordInput = strings.TrimSpace(line)
+			if errors.Is(err, io.EOF) && passwordInput == "" {
+				return "", io.EOF
+			}
 		}
 
 		if passwordInput != "" {
