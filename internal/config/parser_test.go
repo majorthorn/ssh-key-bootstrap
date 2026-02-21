@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -93,6 +94,21 @@ func TestParseDotEnvContentValidKeyFormats(t *testing.T) {
 	}
 	if parsed["SSH_USER"] != "admin" {
 		t.Fatalf("SSH_USER = %q, want %q", parsed["SSH_USER"], "admin")
+	}
+}
+
+func TestParseDotEnvContentSupportsLargeLines(t *testing.T) {
+	t.Parallel()
+
+	largeValue := strings.Repeat("x", 70*1024)
+	content := "LARGE=" + strconv.Quote(largeValue) + "\n"
+
+	parsed, err := parseDotEnvContent(content)
+	if err != nil {
+		t.Fatalf("parseDotEnvContent() error = %v", err)
+	}
+	if parsed["LARGE"] != largeValue {
+		t.Fatalf("LARGE value length = %d, want %d", len(parsed["LARGE"]), len(largeValue))
 	}
 }
 

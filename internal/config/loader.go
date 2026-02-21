@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,6 +18,13 @@ type RuntimeIO interface {
 }
 
 func ApplyFiles(programOptions *Options, runtimeIO RuntimeIO) error {
+	if programOptions == nil {
+		return errors.New("program options are required")
+	}
+	if runtimeIO == nil {
+		return errors.New("runtime IO is required")
+	}
+
 	selectedDotEnvPath, err := resolveDotEnvSource(programOptions, runtimeIO)
 	if err != nil {
 		return err

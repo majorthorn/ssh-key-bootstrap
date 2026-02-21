@@ -101,6 +101,10 @@ func (timestampWriter *timestampedLineWriter) writeLineLocked(line []byte, appen
 }
 
 func promptLine(reader *bufio.Reader, label string) (string, error) {
+	if reader == nil {
+		return "", errors.New("input reader is nil")
+	}
+
 	outputPrint(label)
 	line, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {

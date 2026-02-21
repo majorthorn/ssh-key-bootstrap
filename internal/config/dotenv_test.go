@@ -44,6 +44,18 @@ func TestApplyDotEnvWithMetadataNoEnvFile(t *testing.T) {
 	}
 }
 
+func TestApplyDotEnvWithMetadataNilOptions(t *testing.T) {
+	t.Parallel()
+
+	_, err := ApplyDotEnvWithMetadata(nil)
+	if err == nil {
+		t.Fatalf("expected nil-options error")
+	}
+	if !strings.Contains(err.Error(), "program options are required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestApplyDotEnvWithMetadataLoadsFields(t *testing.T) {
 	t.Parallel()
 

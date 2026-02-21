@@ -778,6 +778,18 @@ func TestPromptLineReturnsReadError(t *testing.T) {
 	}
 }
 
+func TestPromptLineReturnsErrorForNilReader(t *testing.T) {
+	captureWriters(t)
+
+	_, err := promptLine(nil, "Prompt: ")
+	if err == nil {
+		t.Fatalf("expected nil-reader error")
+	}
+	if !strings.Contains(err.Error(), "input reader is nil") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestPromptLineReturnsEOFWhenEmptyInput(t *testing.T) {
 	captureWriters(t)
 	reader := bufio.NewReader(strings.NewReader(""))

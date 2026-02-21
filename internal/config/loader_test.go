@@ -164,6 +164,30 @@ func TestApplyFilesNonInteractiveNoSource(t *testing.T) {
 	}
 }
 
+func TestApplyFilesNilOptions(t *testing.T) {
+	t.Parallel()
+
+	err := ApplyFiles(nil, &scriptedRuntimeIO{interactive: false})
+	if err == nil {
+		t.Fatalf("expected nil-options error")
+	}
+	if !strings.Contains(err.Error(), "program options are required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestApplyFilesNilRuntimeIO(t *testing.T) {
+	t.Parallel()
+
+	err := ApplyFiles(&Options{}, nil)
+	if err == nil {
+		t.Fatalf("expected nil-runtime error")
+	}
+	if !strings.Contains(err.Error(), "runtime IO is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestFileExists(t *testing.T) {
 	t.Parallel()
 

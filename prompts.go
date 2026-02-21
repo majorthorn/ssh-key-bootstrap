@@ -39,6 +39,10 @@ func validateOptions(programOptions *options) error {
 }
 
 func fillMissingInputs(inputReader *bufio.Reader, programOptions *options) error {
+	if inputReader == nil {
+		inputReader = bufio.NewReader(os.Stdin)
+	}
+
 	var err error
 
 	if strings.TrimSpace(programOptions.User) == "" {

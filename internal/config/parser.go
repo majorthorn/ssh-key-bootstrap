@@ -10,9 +10,12 @@ import (
 	"strings"
 )
 
+const maxDotEnvLineBytes = 1024 * 1024
+
 func parseDotEnvContent(dotEnvContent string) (map[string]string, error) {
 	parsedValues := map[string]string{}
 	lineScanner := bufio.NewScanner(strings.NewReader(normalizeLF(dotEnvContent)))
+	lineScanner.Buffer(make([]byte, 0, 4096), maxDotEnvLineBytes)
 	lineNumber := 0
 
 	for lineScanner.Scan() {

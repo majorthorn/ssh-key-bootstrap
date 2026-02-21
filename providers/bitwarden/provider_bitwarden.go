@@ -1,6 +1,7 @@
 package bitwarden
 
 import (
+	"fmt"
 	"strings"
 
 	"ssh-key-bootstrap/providers"
@@ -31,11 +32,11 @@ func (provider) Resolve(secretRef string) (string, error) {
 
 	if secretValue, err := resolveWithBW(secretID); err == nil {
 		return secretValue, nil
+	} else {
+		secretValue, fallbackErr := resolveWithBWS(secretID)
+		if fallbackErr == nil {
+			return secretValue, nil
+		}
+		return "", fmt.Errorf("resolve secret %q via bw and bws failed: bw: %v; bws: %w", secretID, err, fallbackErr)
 	}
-
-	secretValue, err := resolveWithBWS(secretID)
-	if err != nil {
-		return "", err
-	}
-	return secretValue, nil
 }

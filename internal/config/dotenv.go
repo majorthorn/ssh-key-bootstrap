@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -8,6 +9,10 @@ import (
 )
 
 func ApplyDotEnvWithMetadata(programOptions *Options) (map[string]bool, error) {
+	if programOptions == nil {
+		return nil, errors.New("program options are required")
+	}
+
 	loadedFieldNames := map[string]bool{}
 	if strings.TrimSpace(programOptions.EnvFile) == "" {
 		return loadedFieldNames, nil

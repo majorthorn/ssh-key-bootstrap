@@ -154,6 +154,9 @@ exit 1
 		if err == nil {
 			t.Fatalf("expected provider resolve error")
 		}
+		if !strings.Contains(err.Error(), "bw failed") {
+			t.Fatalf("expected bw failure in error, got %v", err)
+		}
 		if !strings.Contains(err.Error(), "bws failed") {
 			t.Fatalf("expected bws failure in error, got %v", err)
 		}
