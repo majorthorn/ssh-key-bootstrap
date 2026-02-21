@@ -49,6 +49,18 @@ func TestResolveSecretReferenceNoProvider(t *testing.T) {
 	}
 }
 
+func TestResolveSecretReferenceNoProvidersConfigured(t *testing.T) {
+	t.Parallel()
+
+	_, err := ResolveSecretReference("bw://prod-ssh", nil)
+	if err == nil {
+		t.Fatalf("expected no-providers-configured error")
+	}
+	if !strings.Contains(err.Error(), "no providers configured") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestResolveSecretReferenceProviderError(t *testing.T) {
 	t.Parallel()
 

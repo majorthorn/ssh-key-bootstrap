@@ -53,9 +53,17 @@ func ResolveSecretReference(secretRef string, providers []Provider) (string, err
 	if trimmedRef == "" {
 		return "", errors.New("secret reference is empty")
 	}
+	if len(providers) == 0 {
+		return "", errors.New("no providers configured")
+	}
 
 	var resolveErrors []string
 	for _, provider := range providers {
+		providerName := provider.Name()
+		if strings.TrimSpace(providerName) == "" {
+			providerName = "<unnamed provider>"
+		}
+
 		if !provider.Supports(trimmedRef) {
 			continue
 		}
@@ -63,11 +71,11 @@ func ResolveSecretReference(secretRef string, providers []Provider) (string, err
 		resolvedValue, err := provider.Resolve(trimmedRef)
 		if err == nil {
 			if strings.TrimSpace(resolvedValue) == "" {
-				return "", fmt.Errorf("%s returned an empty secret", provider.Name())
+				return "", fmt.Errorf("%s returned an empty secret", providerName)
 			}
 			return strings.TrimSpace(resolvedValue), nil
 		}
-		resolveErrors = append(resolveErrors, fmt.Sprintf("%s: %v", provider.Name(), err))
+		resolveErrors = append(resolveErrors, fmt.Sprintf("%s: %v", providerName, err))
 	}
 
 	if len(resolveErrors) == 0 {
