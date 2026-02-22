@@ -36,16 +36,18 @@ func TestConfirmLoadedConfigFieldsLoadedValues(t *testing.T) {
 	t.Parallel()
 
 	programOptions := &Options{
-		Server:   "app01",
-		Port:     22,
-		Password: "super-secret",
+		Server:            "app01",
+		Port:              22,
+		Password:          "super-secret",
+		PasswordSecretRef: "bw://very-sensitive-id",
 	}
 	runtimeIO := &testRuntimeIO{}
 
 	confirmLoadedConfigFields(programOptions, map[string]bool{
-		"server":   true,
-		"port":     true,
-		"password": true,
+		"server":            true,
+		"port":              true,
+		"password":          true,
+		"passwordSecretRef": true,
 	}, runtimeIO)
 
 	output := strings.Join(runtimeIO.lines, "")
@@ -60,6 +62,9 @@ func TestConfirmLoadedConfigFieldsLoadedValues(t *testing.T) {
 	}
 	if !strings.Contains(output, "SSH Password: <redacted>\n") {
 		t.Fatalf("expected redacted password in output, got %q", output)
+	}
+	if !strings.Contains(output, "Password Secret Ref: <redacted>\n") {
+		t.Fatalf("expected redacted password secret ref in output, got %q", output)
 	}
 }
 

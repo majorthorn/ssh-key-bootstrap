@@ -1,6 +1,7 @@
 package infisical
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -97,6 +98,9 @@ func requestSecretValue(secretName string, resolvedConfig runtimeConfig) (string
 	if err != nil {
 		return "", fmt.Errorf("create infisical request: %w", err)
 	}
+	requestContext, cancel := context.WithTimeout(context.Background(), requestTimeout)
+	defer cancel()
+	request = request.WithContext(requestContext)
 	request.Header.Set("Authorization", "Bearer "+resolvedConfig.token)
 	request.Header.Set("Accept", "application/json")
 

@@ -2,94 +2,81 @@
 
 ## Scope
 
-Reviewed all repository folders and files present in this workspace, including:
-
-- CLI flow and runtime helpers in repository root
-- SSH connection, host-key verification, and authorized_keys update flow
-- Config loading/parsing/review in `internal/config`
-- Secret provider registry and provider implementations in `providers`
-- Tests and docs
+Repository-wide review across root CLI/runtime files, `internal/config`, provider registry and implementations (`providers/*`), tests, and docs.
 
 ## Main Flow Map
 
-1. CLI entrypoint (`main.go`)
-   - Initializes log writer (`setupRunLogFile`)
-   - Parses flags (`--env`)
-   - Applies `.env` file values
-   - Validates options (including secret ref resolution into runtime password)
-   - Prompts for missing required inputs
-   - Resolves hosts and public key
-   - Builds SSH client config
-   - Connects to each host and updates `authorized_keys`
+1. Parse flags and initialize run log (`main.go`, `shared_utils.go`).
+2. Load and parse `.env` configuration (`config_bridge.go`, `internal/config/*`).
+3. Resolve `PASSWORD_SECRET_REF` via provider registry (`prompts.go`, `providers/resolver.go`, `providers/all/all.go`).
+4. Build SSH client config and host-key callback (`ssh.go`).
+5. Resolve hosts and public key input (`ssh.go`).
+6. Connect to targets and idempotently update `authorized_keys` (`ssh.go`).
+7. Emit task/recap output and status codes (`main.go`).
 
-2. Configuration load (`config_bridge.go`, `internal/config`)
-   - Optional explicit dotenv from `--env`
-   - Optional interactive dotenv discovery near executable
-   - Dotenv parser supports comments, quoted values, and `export KEY=...`
+## Security Issues Found
 
-3. Secret resolution (`prompts.go`, `providers`)
-   - `PASSWORD_SECRET_REF` resolved via provider registry
-   - Providers registered with `init()` and loaded by blank imports in `providers/all`
+- **High**: Potential secret-reference leakage in provider error strings.
+  - **Rationale**: Secret IDs/refs can be sensitive metadata in logs and CI output.
+  - **Changes**:
+    - Kept resolver-level redaction behavior.
+    - Removed secret identifier echo from Bitwarden fallback errors.
+    - Removed full invalid ref echo from Bitwarden/Infisical parse errors.
 
-4. SSH connection/auth and host-key verification (`ssh.go`)
-   - Password auth only
-   - Host key callback with known_hosts check
-   - Unknown hosts optionally trusted interactively and appended to known_hosts
+- **Medium**: Interactive config review showed `Password Secret Ref` in clear text.
+  - **Rationale**: Operators can accidentally expose secret identifiers in terminal captures.
+  - **Changes**: Redacted `Password Secret Ref` preview in `internal/config/review.go`.
 
-5. Authorized key install (`ssh.go`)
-   - Remote script creates `~/.ssh`, ensures file modes, and appends key idempotently
+- **Low**: Infisical requests relied only on client timeout.
+  - **Rationale**: Explicit request context timeout is more robust when client config is swapped in tests/runtime hooks.
+  - **Changes**: Added per-request `context.WithTimeout` in Infisical HTTP resolve path.
 
-6. Logging and errors (`shared_utils.go` and root flow)
-   - stdout/stderr mirrored to log file near executable
-   - Main flow emits Ansible-style task/recap output
+## Consistency / Idioms Issues Found
 
-## Findings
+- Provider error behavior was inconsistent on secret-ref echoing.
+  - **Recommended/Applied**: Standardized to actionable, non-sensitive messages.
+- Config review sensitivity handling treated password and public key as sensitive but not secret refs.
+  - **Recommended/Applied**: Treat secret refs as sensitive metadata and redact.
+- Error wrapping style already mostly idiomatic (`%w`) and retained.
 
-### Security
+## Efficiency Issues Found
 
-- **Fixed**: Potential secret reference disclosure in provider resolution error strings.
-  - Previous resolver errors could include full secret references in error text.
-  - Updated errors now avoid printing full references.
-  - File: `providers/resolver.go`
+- No major hot-path inefficiencies requiring structural change.
+- Existing host dedupe/sort and provider caching patterns are acceptable for a CLI workload.
+- Infisical in-memory cache remains process-lifetime and avoids repeated remote fetches.
 
-- **Observed (acceptable with current behavior)**: `INSECURE_IGNORE_HOST_KEY=true` disables host verification by design.
-  - This is clearly named and documented as insecure.
+## Refactor Plan (Executed)
 
-- **Observed (acceptable with current behavior)**: Run log lives near executable with mode `0600`.
-  - Good restrictive permissions.
-  - Depending on install location, creation may fail; code handles this non-fatally.
+1. Apply minimal, behavior-preserving security hardening for secret/error surfaces.
+2. Add targeted regression tests for redaction and non-leaking error paths.
+3. Keep external behavior stable (flags/config/output) while improving safety.
+4. Re-run full test + security toolchain.
 
-- **Observed**: Provider command/API failures can include upstream error text.
-  - Current code avoids explicit secret/token formatting.
-  - Existing behavior retained unless needed for security fixes.
+## What Changed
 
-### Reliability
+- Redacted `Password Secret Ref` in interactive config preview.
+- Sanitized Bitwarden and Infisical invalid-ref parse errors.
+- Sanitized Bitwarden dual-failure resolve error to avoid secret ID echo.
+- Added explicit Infisical request context timeout.
+- Added/updated tests to prevent regressions in redaction and error-leak behavior.
 
-- Host-key callback reloads known_hosts after trust-on-first-use; locking is present and correct.
-- SSH and secret command operations have timeout controls (SSH client timeout and Bitwarden command timeout).
-- Dotenv parser includes line-size cap (`1 MiB`) and structured parse errors.
-- Host resolution normalizes and deduplicates server list, then sorts output for deterministic behavior.
+## Validation
 
-### Maintainability
-
-- Codebase is compact and test coverage is broad around parsing and runtime paths.
-- Provider registry pattern is clear and extensible.
-- `internal/config` and root runtime utilities share small overlapping helpers (`expandHomePath`, `normalizeLF`), which is acceptable for now but could be consolidated later.
-
-## Additional Notes by Requested Areas
-
-- **File permissions**: known_hosts and log file are created with `0600`; directories with `0700` where expected.
-- **Host key verification controls**: secure by default, explicit insecure override available.
-- **Secret exposure**: no direct secret logging observed; resolver error wording hardened.
-- **Timeouts**: present for SSH and secret-provider paths.
-- **Command execution**: external command invocation uses fixed binaries/args and no shell in provider command execution.
-- **Error messages**: mostly contextual and actionable; reviewed for sensitive content leakage.
+- `go test ./...` passes.
+- `make security` passes (`govulncheck`, `gosec`, `staticcheck`).
 
 ## Assumptions
 
-- Infisical API endpoint format assumed as `GET /api/v3/secrets/raw/{secretName}` with query params:
-  - `workspaceId`
-  - `environment`
-- No existing provider-specific config block mechanism exists in current config schema; therefore Infisical provider config is environment-variable based.
-- Bitwarden provider env-var inventory in docs is derived from repository string-literal/code search only; no Bitwarden-specific `BW_*` or `BITWARDEN_*` env literals are defined in provider code.
-- Keeping existing CLI/output behavior is prioritized over broader refactors.
+- Secret references/secret identifiers are considered sensitive metadata and should not be echoed in user-facing errors.
+- Preserving CLI/config/output compatibility remains a priority except for security/correctness fixes.
+- Infisical API contract remains `GET /api/v3/secrets/raw/{secretName}` with `workspaceId` and `environment` query parameters.
+
+## TODO Disposition
+
+- [x] Search executed for `TODO|FIXME|XXX|HACK|BUG` (case-insensitive) across repository source.
+  - Command: `grep -RInE "TODO|FIXME|XXX|HACK|BUG" . --exclude-dir=.git --exclude-dir=.gocache --exclude-dir=build`
+  - Result: no matches in source tree.
+  - Disposition: no in-repo TODO/FIXME/XXX/HACK/BUG markers required implementation, deferment, or removal.
+- [x] Generated cache artifacts (`.gocache`) excluded from disposition scope.
+  - Rationale: generated files are not repository source and are recreated by toolchain.
+  - Disposition: no code change required.

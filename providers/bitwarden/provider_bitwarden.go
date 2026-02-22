@@ -37,6 +37,6 @@ func (provider) Resolve(secretRef string) (string, error) {
 		if fallbackErr == nil {
 			return secretValue, nil
 		}
-		return "", fmt.Errorf("resolve secret %q via bw and bws failed: bw: %v; bws: %w", secretID, err, fallbackErr)
+		return "", fmt.Errorf("resolve secret via bw and bws failed: bw: %v; bws: %w", err, fallbackErr)
 	}
 }

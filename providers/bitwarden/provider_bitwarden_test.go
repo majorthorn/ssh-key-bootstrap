@@ -150,7 +150,8 @@ exit 1
 `)
 		t.Setenv("PATH", commandDirectory)
 
-		_, err := provider{}.Resolve("bw://secret-id")
+		secretRef := "bw://secret-id"
+		_, err := provider{}.Resolve(secretRef)
 		if err == nil {
 			t.Fatalf("expected provider resolve error")
 		}
@@ -160,15 +161,22 @@ exit 1
 		if !strings.Contains(err.Error(), "bws failed") {
 			t.Fatalf("expected bws failure in error, got %v", err)
 		}
+		if strings.Contains(err.Error(), "secret-id") || strings.Contains(err.Error(), secretRef) {
+			t.Fatalf("expected secret identifier redaction in error, got %v", err)
+		}
 	})
 
 	t.Run("rejects unsupported reference format", func(t *testing.T) {
-		_, err := provider{}.Resolve("vault://secret-id")
+		secretRef := "vault://secret-id"
+		_, err := provider{}.Resolve(secretRef)
 		if err == nil {
 			t.Fatalf("expected parse error")
 		}
 		if !strings.Contains(err.Error(), "invalid bitwarden secret ref") {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		if strings.Contains(err.Error(), secretRef) {
+			t.Fatalf("expected invalid ref error to avoid echoing full input, got %v", err)
 		}
 	})
 }

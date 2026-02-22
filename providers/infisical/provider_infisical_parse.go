@@ -63,7 +63,7 @@ func parseSecretBody(secretRef string) (string, error) {
 	case strings.HasPrefix(strings.ToLower(trimmedRef), "inf:"):
 		trimmedRef = trimmedRef[len("inf:"):]
 	default:
-		return "", fmt.Errorf("invalid infisical secret ref %q", secretRef)
+		return "", errors.New("invalid infisical secret ref")
 	}
 
 	trimmedRef = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(trimmedRef), "//"))

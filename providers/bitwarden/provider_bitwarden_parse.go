@@ -2,7 +2,6 @@ package bitwarden
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -16,7 +15,7 @@ func parseSecretID(secretRef string) (string, error) {
 	case strings.HasPrefix(strings.ToLower(trimmedRef), "bw:"):
 		trimmedRef = trimmedRef[len("bw:"):]
 	default:
-		return "", fmt.Errorf("invalid bitwarden secret ref %q", secretRef)
+		return "", errors.New("invalid bitwarden secret ref")
 	}
 
 	trimmedRef = strings.TrimSpace(trimmedRef)

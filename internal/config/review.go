@@ -34,7 +34,7 @@ func configFields() []configField {
 		{key: "servers", label: "Servers", kind: "text", get: func(optionsValue *Options) string { return optionsValue.Servers }},
 		{key: "user", label: "SSH User", kind: "text", get: func(optionsValue *Options) string { return optionsValue.User }},
 		{key: "password", label: "SSH Password", kind: "password", get: func(optionsValue *Options) string { return optionsValue.Password }},
-		{key: "passwordSecretRef", label: "Password Secret Ref", kind: "text", get: func(optionsValue *Options) string { return optionsValue.PasswordSecretRef }},
+		{key: "passwordSecretRef", label: "Password Secret Ref", kind: "secretref", get: func(optionsValue *Options) string { return optionsValue.PasswordSecretRef }},
 		{key: "keyInput", label: "Public Key Input", kind: "publickey", get: func(optionsValue *Options) string { return optionsValue.KeyInput }},
 		{key: "port", label: "Default Port", kind: "text", get: func(optionsValue *Options) string { return fmt.Sprintf("%d", optionsValue.Port) }},
 		{key: "timeoutSec", label: "Timeout (Seconds)", kind: "text", get: func(optionsValue *Options) string { return fmt.Sprintf("%d", optionsValue.TimeoutSec) }},
@@ -47,6 +47,8 @@ func previewFieldValue(field configField, programOptions *Options) string {
 	value := field.get(programOptions)
 	switch field.kind {
 	case "password":
+		return maskSensitiveValue(value)
+	case "secretref":
 		return maskSensitiveValue(value)
 	case "publickey":
 		return maskSensitiveValue(value)

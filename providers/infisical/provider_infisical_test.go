@@ -76,11 +76,15 @@ func TestParseSecretRef(t *testing.T) {
 func TestProviderResolveInvalidRef(t *testing.T) {
 	t.Parallel()
 
-	_, err := provider{}.Resolve("vault://unknown")
+	secretRef := "vault://very-sensitive-secret-id"
+	_, err := provider{}.Resolve(secretRef)
 	if err == nil {
 		t.Fatalf("expected parse error")
 	}
 	if !strings.Contains(err.Error(), "invalid infisical secret ref") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if strings.Contains(err.Error(), secretRef) || strings.Contains(err.Error(), "very-sensitive-secret-id") {
+		t.Fatalf("expected invalid ref error to avoid echoing full input, got %v", err)
 	}
 }
