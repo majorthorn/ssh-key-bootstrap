@@ -39,6 +39,16 @@ Run:
 
     ./ssh-key-bootstrap --env ./.env
 
+## Secrets Providers
+
+- Bitwarden (`bw://...`, `bw:...`, `bitwarden://...`)
+- Infisical (`infisical://...`, plus `infisical:...`, `inf://...`, `inf:...` aliases)
+
+Use `PASSWORD_SECRET_REF` to resolve the SSH password at runtime.
+See provider docs for setup details:
+
+- [docs/providers/infisical.md](docs/providers/infisical.md)
+
 ## Detailed Documentation
 
 - Technical deep dive: [docs/TECHNICAL.md](docs/TECHNICAL.md)

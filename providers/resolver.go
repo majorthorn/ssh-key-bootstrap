@@ -17,7 +17,7 @@ var (
 	providerRegistryMu sync.RWMutex
 	providerRegistry   []Provider
 
-	ErrEmptySecretReference = errors.New("secret reference is empty")
+	ErrEmptySecretReference  = errors.New("secret reference is empty")
 	ErrNoProvidersConfigured = errors.New("no providers configured")
 )
 
@@ -103,7 +103,7 @@ func ResolveSecretReference(secretRef string, providers []Provider) (string, err
 	}
 
 	if len(resolveErrors) == 0 {
-		return "", fmt.Errorf("no provider supports secret reference %q", trimmedRef)
+		return "", errors.New("no provider supports the supplied secret reference")
 	}
-	return "", fmt.Errorf("resolve %q failed (%s)", trimmedRef, strings.Join(resolveErrors, "; "))
+	return "", fmt.Errorf("secret reference resolution failed (%s)", strings.Join(resolveErrors, "; "))
 }

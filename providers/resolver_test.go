@@ -102,6 +102,21 @@ func TestResolveSecretReferenceProviderError(t *testing.T) {
 	}
 }
 
+func TestResolveSecretReferenceErrorDoesNotLeakFullRef(t *testing.T) {
+	t.Parallel()
+
+	secretRef := "infisical://very-sensitive-secret-name"
+	_, err := ResolveSecretReference(secretRef, []Provider{
+		fakeProvider{name: "provider-a", supports: true, resolveErr: errors.New("boom")},
+	})
+	if err == nil {
+		t.Fatalf("expected provider error")
+	}
+	if strings.Contains(err.Error(), secretRef) {
+		t.Fatalf("error leaked full secret reference: %v", err)
+	}
+}
+
 func TestResolveSecretReferenceEmptyRef(t *testing.T) {
 	t.Parallel()
 
