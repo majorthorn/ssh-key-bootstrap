@@ -91,4 +91,5 @@ Reviewed all repository folders and files present in this workspace, including:
   - `workspaceId`
   - `environment`
 - No existing provider-specific config block mechanism exists in current config schema; therefore Infisical provider config is environment-variable based.
+- Bitwarden provider env-var inventory in docs is derived from repository string-literal/code search only; no Bitwarden-specific `BW_*` or `BITWARDEN_*` env literals are defined in provider code.
 - Keeping existing CLI/output behavior is prioritized over broader refactors.

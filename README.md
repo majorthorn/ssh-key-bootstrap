@@ -47,6 +47,7 @@ Run:
 Use `PASSWORD_SECRET_REF` to resolve the SSH password at runtime.
 See provider docs for setup details:
 
+- [docs/providers/bitwarden.md](docs/providers/bitwarden.md)
 - [docs/providers/infisical.md](docs/providers/infisical.md)
 
 ## Detailed Documentation

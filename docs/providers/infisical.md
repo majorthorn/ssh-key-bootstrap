@@ -1,10 +1,12 @@
 # Infisical Provider
 
-`ssh-key-bootstrap` supports resolving `PASSWORD_SECRET_REF` from Infisical.
+## Overview
 
-## Canonical Secret Reference Format
+Use this provider to resolve `PASSWORD_SECRET_REF` values from Infisical at runtime.
 
-Use:
+## Canonical Secret Ref Format
+
+Canonical format:
 
 ```dotenv
 PASSWORD_SECRET_REF=infisical://<secret-name>
@@ -17,19 +19,35 @@ Accepted aliases (case-insensitive, surrounding whitespace ignored):
 - `inf://<ref>`
 - `inf:<ref>`
 
-## Required Environment Variables
+## Environment Variables
 
-- `INFISICAL_TOKEN` (required)
-- `INFISICAL_PROJECT_ID` (required)
-- `INFISICAL_ENV` or `INFISICAL_ENVIRONMENT` (required)
+Required:
+
+- `INFISICAL_TOKEN`
+- `INFISICAL_PROJECT_ID`
+- `INFISICAL_ENV` or `INFISICAL_ENVIRONMENT`
 
 Optional:
 
 - `INFISICAL_API_URL` (default: `https://api.infisical.com`)
 
-The provider enforces HTTPS for the API URL.
+Notes:
 
-## Example
+- `INFISICAL_API_URL` must be HTTPS.
+- You can override project/environment in the ref query string:
+
+```dotenv
+PASSWORD_SECRET_REF=infisical://ssh-prod-password?projectId=<project-id>&environment=prod
+```
+
+Supported query keys:
+
+- Project: `projectId`, `projectID`, `workspaceId`, `workspaceID`
+- Environment: `environment`, `env`
+
+## Minimal Working Example
+
+`.env`:
 
 ```dotenv
 SERVERS=app01.internal,app02.internal
@@ -43,17 +61,15 @@ INFISICAL_ENV=prod
 INFISICAL_API_URL=https://api.infisical.com
 ```
 
-## Optional Reference Query Overrides
-
-You can override project/environment directly in the secret reference query string:
+Config mapping snippet:
 
 ```dotenv
-PASSWORD_SECRET_REF=infisical://ssh-prod-password?projectId=<project-id>&environment=prod
+PASSWORD_SECRET_REF=infisical://ssh-prod-password
 ```
 
-Supported query keys:
+## Troubleshooting
 
-- Project: `projectId`, `projectID`, `workspaceId`, `workspaceID`
-- Environment: `environment`, `env`
-
-When present in the reference, these values override environment-variable defaults.
+- `infisical token is required`: set `INFISICAL_TOKEN`.
+- `infisical project id is required`: set `INFISICAL_PROJECT_ID` or provide `projectId` in the ref query.
+- `infisical environment is required`: set `INFISICAL_ENV`/`INFISICAL_ENVIRONMENT` or provide `environment` in the ref query.
+- `infisical API URL must use https`: set `INFISICAL_API_URL` to an HTTPS endpoint.
