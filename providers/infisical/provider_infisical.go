@@ -1,7 +1,6 @@
 package infisical
 
 import (
-	"fmt"
 	"strings"
 
 	"ssh-key-bootstrap/providers"
@@ -9,14 +8,18 @@ import (
 
 type provider struct{}
 
-type modeProvider interface {
-	Resolve(secretSpec secretRefSpec) (string, error)
-}
-
 type secretRefSpec struct {
 	secretName  string
 	projectID   string
 	environment string
+}
+
+type infisicalResolver interface {
+	Resolve(secretSpec secretRefSpec) (string, error)
+}
+
+var newInfisicalResolver = func() infisicalResolver {
+	return sdkProvider{}
 }
 
 func init() {
@@ -39,26 +42,5 @@ func (provider) Resolve(secretRef string) (string, error) {
 		return "", err
 	}
 
-	providerInstance, err := newModeProvider()
-	if err != nil {
-		return "", err
-	}
-
-	return providerInstance.Resolve(secretSpec)
-}
-
-func newModeProvider() (modeProvider, error) {
-	modeConfiguration, err := loadModeConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	switch modeConfiguration.mode {
-	case modeCLI:
-		return newCLIProvider(modeConfiguration), nil
-	case modeAPI:
-		return apiProvider{}, nil
-	default:
-		return nil, fmt.Errorf("unsupported infisical mode %q", modeConfiguration.mode)
-	}
+	return newInfisicalResolver().Resolve(secretSpec)
 }

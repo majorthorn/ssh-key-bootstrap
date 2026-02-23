@@ -1,50 +1,32 @@
 package infisical
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
 
-func TestNewModeProviderDefaultsToCLI(t *testing.T) {
-	t.Parallel()
-
-	setLookupEnvForTest(t, map[string]string{})
-
-	providerInstance, err := newModeProvider()
-	if err != nil {
-		t.Fatalf("newModeProvider() error = %v", err)
-	}
-	if _, ok := providerInstance.(cliProvider); !ok {
-		t.Fatalf("expected default provider type cliProvider, got %T", providerInstance)
-	}
+type fakeInfisicalResolver struct {
+	resolvedSecret string
+	resolveErr     error
+	lastSpec       secretRefSpec
 }
 
-func TestNewModeProviderSelectsAPI(t *testing.T) {
-	t.Parallel()
-
-	setLookupEnvForTest(t, map[string]string{"INFISICAL_MODE": "api"})
-
-	providerInstance, err := newModeProvider()
-	if err != nil {
-		t.Fatalf("newModeProvider() error = %v", err)
+func (f *fakeInfisicalResolver) Resolve(secretSpec secretRefSpec) (string, error) {
+	f.lastSpec = secretSpec
+	if f.resolveErr != nil {
+		return "", f.resolveErr
 	}
-	if _, ok := providerInstance.(apiProvider); !ok {
-		t.Fatalf("expected provider type apiProvider, got %T", providerInstance)
-	}
+	return f.resolvedSecret, nil
 }
 
-func TestNewModeProviderInvalidMode(t *testing.T) {
-	t.Parallel()
-
-	setLookupEnvForTest(t, map[string]string{"INFISICAL_MODE": "not-valid"})
-
-	_, err := newModeProvider()
-	if err == nil {
-		t.Fatalf("expected invalid mode error")
-	}
-	if !strings.Contains(err.Error(), "INFISICAL_MODE") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+func setResolverFactoryForTest(t *testing.T, factory func() infisicalResolver) {
+	t.Helper()
+	originalFactory := newInfisicalResolver
+	newInfisicalResolver = factory
+	t.Cleanup(func() {
+		newInfisicalResolver = originalFactory
+	})
 }
 
 func TestProviderSupports(t *testing.T) {
@@ -120,9 +102,46 @@ func TestParseSecretRef(t *testing.T) {
 	}
 }
 
-func TestProviderResolveInvalidRef(t *testing.T) {
-	t.Parallel()
+func TestProviderResolveDelegatesToResolver(t *testing.T) {
+	resolver := &fakeInfisicalResolver{resolvedSecret: "resolved-secret"}
+	setResolverFactoryForTest(t, func() infisicalResolver {
+		return resolver
+	})
 
+	secretValue, err := provider{}.Resolve("infisical://app/secret?projectId=project-a&environment=prod")
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if secretValue != "resolved-secret" {
+		t.Fatalf("secret value = %q, want %q", secretValue, "resolved-secret")
+	}
+	if resolver.lastSpec.secretName != "app/secret" {
+		t.Fatalf("secret name = %q, want %q", resolver.lastSpec.secretName, "app/secret")
+	}
+	if resolver.lastSpec.projectID != "project-a" {
+		t.Fatalf("project id = %q, want %q", resolver.lastSpec.projectID, "project-a")
+	}
+	if resolver.lastSpec.environment != "prod" {
+		t.Fatalf("environment = %q, want %q", resolver.lastSpec.environment, "prod")
+	}
+}
+
+func TestProviderResolvePropagatesResolverError(t *testing.T) {
+	resolver := &fakeInfisicalResolver{resolveErr: errors.New("resolution failed")}
+	setResolverFactoryForTest(t, func() infisicalResolver {
+		return resolver
+	})
+
+	_, err := provider{}.Resolve("inf://app/secret")
+	if err == nil {
+		t.Fatalf("expected resolver error")
+	}
+	if !strings.Contains(err.Error(), "resolution failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestProviderResolveInvalidRef(t *testing.T) {
 	secretRef := "vault://very-sensitive-secret-id"
 	_, err := provider{}.Resolve(secretRef)
 	if err == nil {
@@ -137,8 +156,6 @@ func TestProviderResolveInvalidRef(t *testing.T) {
 }
 
 func TestProviderResolveRejectsLegacySingleColonFormat(t *testing.T) {
-	t.Parallel()
-
 	_, err := provider{}.Resolve("infisical:very-sensitive-secret-id")
 	if err == nil {
 		t.Fatalf("expected parse error")

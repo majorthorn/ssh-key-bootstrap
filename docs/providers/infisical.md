@@ -2,57 +2,44 @@
 
 ## Overview
 
-Use this provider to resolve `PASSWORD_SECRET_REF` values from Infisical at runtime.
+Infisical secrets are resolved through the official Infisical Go SDK (`github.com/infisical/go-sdk`).
+The provider is SDK-backed only (no Infisical CLI mode).
 
-Resolution behavior:
+Supported secret references:
 
-- Default mode is CLI (`INFISICAL_MODE` unset or empty).
-- API mode is enabled by setting `INFISICAL_MODE=api`.
-- CLI mode can be set explicitly with `INFISICAL_MODE=cli`.
+- `infisical://<secret-name>`
+- `inf://<secret-name>`
 
-## Canonical Secret Ref Format
-
-Canonical format:
+Canonical example:
 
 ```dotenv
-PASSWORD_SECRET_REF=infisical://<secret-name>
+PASSWORD_SECRET_REF=infisical://ssh-prod-password
 ```
 
-Supported formats:
+## Authentication
 
-- `infisical://<ref>`
-- `inf://<ref>`
+This provider uses Universal Auth through the SDK:
 
-## Environment Variables
+- `Auth().UniversalAuthLogin(clientID, clientSecret)`
 
-Mode selection:
+Required auth env vars:
 
-- `INFISICAL_MODE` (optional; default is `cli` when unset or empty)
+- `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID`
+- `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`
 
-Required for CLI mode:
+Optional auth env var:
 
-- Provide project/environment either in `PASSWORD_SECRET_REF` query (`projectId` and `environment`) or via env vars:
-	- `INFISICAL_PROJECT_ID`
-	- `INFISICAL_ENV` or `INFISICAL_ENVIRONMENT`
+- `INFISICAL_AUTH_ORGANIZATION_SLUG`
+  - Used to scope login to a specific organization/sub-organization.
 
-Required for API mode:
+## Project/Environment Selection
 
-- `INFISICAL_MODE=api`
-- `INFISICAL_TOKEN`
+Secret resolution needs project and environment:
+
 - `INFISICAL_PROJECT_ID`
 - `INFISICAL_ENV` or `INFISICAL_ENVIRONMENT`
 
-Optional:
-
-- `INFISICAL_CLI_BIN` (CLI mode only, default: `infisical`)
-- `INFISICAL_CLI_TIMEOUT` (CLI mode only, duration string, example `10s`, `30s`)
-- `INFISICAL_API_URL` (API mode only, default: `https://api.infisical.com`)
-
-Notes:
-
-- CLI authentication is handled by the installed Infisical CLI session/environment.
-- `INFISICAL_API_URL` must be HTTPS.
-- You can override project/environment in the ref query string:
+You can override both directly in the secret reference query:
 
 ```dotenv
 PASSWORD_SECRET_REF=infisical://ssh-prod-password?projectId=<project-id>&environment=prod
@@ -63,9 +50,27 @@ Supported query keys:
 - Project: `projectId`, `projectID`, `workspaceId`, `workspaceID`
 - Environment: `environment`, `env`
 
-## Minimal Working Example
+## Host / Site URL
 
-`.env`:
+Set the Infisical host with:
+
+- `INFISICAL_SITE_URL` (preferred)
+- `INFISICAL_API_URL` (legacy compatibility alias)
+
+Default if unset:
+
+- `https://app.infisical.com`
+
+Validation rules:
+
+- Must use `https`
+- Must include host
+- Must not include path/query/fragment/userinfo
+- Provide host only (for example `https://app.infisical.com` or `https://infisical.example.com`)
+
+Do not append `/api` manually. The SDK handles API endpoint pathing.
+
+## Minimal Example
 
 ```dotenv
 SERVERS=app01.internal,app02.internal
@@ -73,33 +78,30 @@ USER=deploy
 PASSWORD_SECRET_REF=infisical://ssh-prod-password
 KEY=~/.ssh/id_ed25519.pub
 
-# default mode is CLI when INFISICAL_MODE is unset
-INFISICAL_CLI_TIMEOUT=10s
-```
-
-API mode example:
-
-```dotenv
-INFISICAL_MODE=api
-INFISICAL_TOKEN=replace-with-token
+INFISICAL_SITE_URL=https://app.infisical.com
+INFISICAL_UNIVERSAL_AUTH_CLIENT_ID=replace-with-client-id
+INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET=replace-with-client-secret
 INFISICAL_PROJECT_ID=replace-with-project-id
 INFISICAL_ENV=prod
-INFISICAL_API_URL=https://api.infisical.com
 ```
 
-Config mapping snippet:
+## Migration Notes
 
-```dotenv
-PASSWORD_SECRET_REF=infisical://ssh-prod-password
-PASSWORD_SECRET_REF=inf://ssh-prod-password
-```
+Removed from the provider:
+
+- `INFISICAL_MODE`
+- `INFISICAL_CLI_BIN`
+- `INFISICAL_CLI_TIMEOUT`
+- Infisical CLI execution path
+- Token-based env auth path (`INFISICAL_TOKEN`)
+
+If you were using CLI mode before, migrate to SDK Universal Auth env vars listed above.
 
 ## Troubleshooting
 
-- `invalid INFISICAL_MODE ...`: use `cli` or `api`.
-- `invalid secret reference format: expected infisical://<value> or inf://<value>`: use `infisical://<secret-name>` or `inf://<secret-name>`.
-- `infisical CLI binary ... not found in PATH`: install Infisical CLI or set `INFISICAL_CLI_BIN`.
-- `infisical token is required`: set `INFISICAL_TOKEN`.
-- `infisical project id is required`: set `INFISICAL_PROJECT_ID` or provide `projectId` in the ref query.
-- `infisical environment is required`: set `INFISICAL_ENV`/`INFISICAL_ENVIRONMENT` or provide `environment` in the ref query.
-- `infisical API URL must use https`: set `INFISICAL_API_URL` to an HTTPS endpoint.
+- `invalid secret reference format...`: use `infisical://<secret-name>` or `inf://<secret-name>`.
+- `infisical universal auth client id is required`: set `INFISICAL_UNIVERSAL_AUTH_CLIENT_ID`.
+- `infisical universal auth client secret is required`: set `INFISICAL_UNIVERSAL_AUTH_CLIENT_SECRET`.
+- `infisical project id is required`: set `INFISICAL_PROJECT_ID` or provide `projectId` in ref query.
+- `infisical environment is required`: set `INFISICAL_ENV`/`INFISICAL_ENVIRONMENT` or provide `environment` in ref query.
+- `infisical site url must use https`: set `INFISICAL_SITE_URL` to an HTTPS host URL.

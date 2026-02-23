@@ -53,11 +53,6 @@ Quick provider ref examples:
     - `PASSWORD_SECRET_REF=infisical://replace-with-secret-name`
     - `PASSWORD_SECRET_REF=inf://replace-with-secret-name`
 
-Infisical mode selection:
-
-- Default: CLI mode (`INFISICAL_MODE` unset/empty)
-- API mode: set `INFISICAL_MODE=api`
-
 Use `PASSWORD_SECRET_REF` to resolve the SSH password at runtime.
 See provider docs for setup details:
 

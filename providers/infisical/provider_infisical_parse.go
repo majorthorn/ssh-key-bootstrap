@@ -10,44 +10,29 @@ import (
 const infisicalRefFormatErr = "invalid secret reference format: expected infisical://<value> or inf://<value>"
 
 func parseSecretRef(secretRef string) (secretRefSpec, error) {
-	body, err := parseSecretBody(secretRef)
+	baseRef, rawQuery, err := splitSchemeAndQuery(secretRef)
 	if err != nil {
 		return secretRefSpec{}, err
 	}
 
-	secretNamePart := body
-	queryString := ""
-	if separatorIndex := strings.Index(body, "?"); separatorIndex >= 0 {
-		secretNamePart = body[:separatorIndex]
-		queryString = body[separatorIndex+1:]
-	}
-
-	secretName := strings.Trim(strings.TrimSpace(secretNamePart), "/")
+	secretName := strings.TrimSpace(baseRef)
 	if secretName == "" {
 		return secretRefSpec{}, errors.New("infisical secret ref is missing secret identifier")
 	}
 
-	queryValues, err := url.ParseQuery(queryString)
+	parsedQuery, err := url.ParseQuery(rawQuery)
 	if err != nil {
 		return secretRefSpec{}, fmt.Errorf("invalid infisical secret ref query: %w", err)
 	}
 
 	return secretRefSpec{
-		secretName: secretName,
-		projectID: firstNonEmpty(
-			strings.TrimSpace(queryValues.Get("projectId")),
-			strings.TrimSpace(queryValues.Get("projectID")),
-			strings.TrimSpace(queryValues.Get("workspaceId")),
-			strings.TrimSpace(queryValues.Get("workspaceID")),
-		),
-		environment: firstNonEmpty(
-			strings.TrimSpace(queryValues.Get("environment")),
-			strings.TrimSpace(queryValues.Get("env")),
-		),
+		secretName:  secretName,
+		projectID:   firstNonEmpty(parsedQuery.Get("projectId"), parsedQuery.Get("projectID"), parsedQuery.Get("workspaceId"), parsedQuery.Get("workspaceID")),
+		environment: firstNonEmpty(parsedQuery.Get("environment"), parsedQuery.Get("env")),
 	}, nil
 }
 
-func parseSecretBody(secretRef string) (string, error) {
+func splitSchemeAndQuery(secretRef string) (string, string, error) {
 	trimmedRef := strings.TrimSpace(secretRef)
 	switch {
 	case strings.HasPrefix(strings.ToLower(trimmedRef), "infisical://"):
@@ -55,12 +40,23 @@ func parseSecretBody(secretRef string) (string, error) {
 	case strings.HasPrefix(strings.ToLower(trimmedRef), "inf://"):
 		trimmedRef = trimmedRef[len("inf://"):]
 	default:
-		return "", errors.New(infisicalRefFormatErr)
+		return "", "", errors.New(infisicalRefFormatErr)
 	}
 
-	trimmedRef = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(trimmedRef), "//"))
+	trimmedRef = strings.TrimSpace(trimmedRef)
 	if trimmedRef == "" {
-		return "", errors.New("infisical secret ref is missing secret identifier")
+		return "", "", errors.New("infisical secret ref is missing secret identifier")
 	}
-	return trimmedRef, nil
+
+	queryIndex := strings.Index(trimmedRef, "?")
+	if queryIndex == -1 {
+		return trimmedRef, "", nil
+	}
+
+	baseRef := strings.TrimSpace(trimmedRef[:queryIndex])
+	if baseRef == "" {
+		return "", "", errors.New("infisical secret ref is missing secret identifier")
+	}
+
+	return baseRef, trimmedRef[queryIndex+1:], nil
 }
