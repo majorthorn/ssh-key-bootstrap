@@ -4,54 +4,40 @@
 
 Use this provider to resolve `PASSWORD_SECRET_REF` values from Bitwarden at runtime.
 
-This provider shells out to the Bitwarden CLIs:
+Resolution behavior:
 
-- `bw get secret <id> --raw`
-- fallback: `bws secret get <id>`
+- Primary command: `bw get secret <id> --raw`
+- Fallback command: `bws secret get <id>`
 
-## Supported Secret Ref Formats
+## Canonical Secret Ref Format
 
-Accepted formats (exact prefixes supported by `Supports()`):
+Canonical format:
+
+```dotenv
+PASSWORD_SECRET_REF=bw://<secret-id>
+```
+
+Accepted aliases (case-insensitive, surrounding whitespace ignored):
 
 - `bw://<secret-id>`
 - `bw:<secret-id>`
 - `bitwarden://<secret-id>`
 
-## Authentication Requirements
-
-`ssh-key-bootstrap` does not authenticate to Bitwarden directly; authentication is handled by the installed `bw` / `bws` CLIs and their runtime environment/session.
-
-## Environment Variables Used
-
-The Bitwarden provider code in this repository does not call `os.Getenv` / `os.LookupEnv` and does not define Bitwarden-specific env-var string literals.
-
-Code-derived env-var literals found in provider usage context:
-
-- `PATH` (used by process command resolution; seen in provider tests via `t.Setenv("PATH", ...)`)
+## Environment Variables
 
 Required:
 
-- No provider-specific env var is required by this repository code.
+- No Bitwarden-specific environment variable is required.
 
 Optional:
 
-- `PATH` (must allow resolving `bw` and/or `bws` binaries)
+- `PATH` (so `bw` and/or `bws` can be found)
 
-Defaults:
+Notes:
 
-- None defined by this repository for Bitwarden env vars.
-
-Example value:
-
-- `PATH=/usr/local/bin:/usr/bin:/bin`
-
-## PasswordSecretRef Mapping Examples
-
-```dotenv
-PASSWORD_SECRET_REF=bw://replace-with-secret-id
-PASSWORD_SECRET_REF=bw:replace-with-secret-id
-PASSWORD_SECRET_REF=bitwarden://replace-with-secret-id
-```
+- This tool does not authenticate to Bitwarden directly.
+- Authenticate using the installed `bw` and/or `bws` CLI session first.
+- Make sure your `PATH` includes the location of the `bw` and/or `bws` binaries.
 
 ## Minimal Working Example
 
@@ -68,6 +54,8 @@ Config mapping snippet:
 
 ```dotenv
 PASSWORD_SECRET_REF=bw://replace-with-secret-id
+PASSWORD_SECRET_REF=bw:replace-with-secret-id
+PASSWORD_SECRET_REF=bitwarden://replace-with-secret-id
 ```
 
 ## Troubleshooting

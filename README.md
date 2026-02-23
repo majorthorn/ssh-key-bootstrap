@@ -44,6 +44,18 @@ Run:
 - Bitwarden (`bw://...`, `bw:...`, `bitwarden://...`)
 - Infisical (`infisical://...`, plus `infisical:...`, `inf://...`, `inf:...` aliases)
 
+Quick provider ref examples:
+
+- Bitwarden:
+    - `PASSWORD_SECRET_REF=bw://replace-with-secret-id`
+    - `PASSWORD_SECRET_REF=bw:replace-with-secret-id`
+    - `PASSWORD_SECRET_REF=bitwarden://replace-with-secret-id`
+- Infisical:
+    - `PASSWORD_SECRET_REF=infisical://replace-with-secret-name`
+    - `PASSWORD_SECRET_REF=infisical:replace-with-secret-name`
+    - `PASSWORD_SECRET_REF=inf://replace-with-secret-name`
+    - `PASSWORD_SECRET_REF=inf:replace-with-secret-name`
+
 Infisical mode selection:
 
 - Default: CLI mode (`INFISICAL_MODE` unset/empty)

@@ -160,6 +160,11 @@ No Docker image, systemd unit, or Kubernetes deployment manifests are implemente
   - `bw://...`
   - `bw:...`
   - `bitwarden://...`
+- Infisical provider supports refs:
+  - `infisical://...`
+  - `infisical:...`
+  - `inf://...`
+  - `inf:...`
 - Resolution strategy:
   1. `bw get secret <id> --raw`
   2. fallback `bws secret get <id>`

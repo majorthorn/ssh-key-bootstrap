@@ -4,11 +4,11 @@
 
 Use this provider to resolve `PASSWORD_SECRET_REF` values from Infisical at runtime.
 
-Mode behavior:
+Resolution behavior:
 
-- Default mode: CLI (`INFISICAL_MODE` unset or empty)
-- API mode: set `INFISICAL_MODE=api`
-- CLI mode (explicit): set `INFISICAL_MODE=cli`
+- Default mode is CLI (`INFISICAL_MODE` unset or empty).
+- API mode is enabled by setting `INFISICAL_MODE=api`.
+- CLI mode can be set explicitly with `INFISICAL_MODE=cli`.
 
 ## Canonical Secret Ref Format
 
@@ -27,30 +27,32 @@ Accepted aliases (case-insensitive, surrounding whitespace ignored):
 
 ## Environment Variables
 
-Required:
+Mode selection:
 
-- `INFISICAL_MODE` optional selector (`cli` or `api`; default is `cli`)
+- `INFISICAL_MODE` (optional; default is `cli` when unset or empty)
 
-CLI mode selector/config:
+Required for CLI mode:
 
-- `INFISICAL_MODE=cli` (optional; default when unset)
-- `INFISICAL_CLI_BIN` (optional, default `infisical`)
-- `INFISICAL_CLI_TIMEOUT` (optional duration string, example `10s`, `30s`)
+- Provide project/environment either in `PASSWORD_SECRET_REF` query (`projectId` and `environment`) or via env vars:
+	- `INFISICAL_PROJECT_ID`
+	- `INFISICAL_ENV` or `INFISICAL_ENVIRONMENT`
 
-CLI authentication/config env vars are provided by Infisical CLI itself. This project does not define extra CLI auth env vars beyond selecting binary/mode/timeout.
+Required for API mode:
 
-API mode required:
-
+- `INFISICAL_MODE=api`
 - `INFISICAL_TOKEN`
 - `INFISICAL_PROJECT_ID`
 - `INFISICAL_ENV` or `INFISICAL_ENVIRONMENT`
 
 Optional:
 
+- `INFISICAL_CLI_BIN` (CLI mode only, default: `infisical`)
+- `INFISICAL_CLI_TIMEOUT` (CLI mode only, duration string, example `10s`, `30s`)
 - `INFISICAL_API_URL` (API mode only, default: `https://api.infisical.com`)
 
 Notes:
 
+- CLI authentication is handled by the installed Infisical CLI session/environment.
 - `INFISICAL_API_URL` must be HTTPS.
 - You can override project/environment in the ref query string:
 
@@ -91,6 +93,8 @@ Config mapping snippet:
 
 ```dotenv
 PASSWORD_SECRET_REF=infisical://ssh-prod-password
+PASSWORD_SECRET_REF=inf://ssh-prod-password
+PASSWORD_SECRET_REF=inf:ssh-prod-password
 ```
 
 ## Troubleshooting
