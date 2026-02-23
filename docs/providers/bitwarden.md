@@ -17,10 +17,9 @@ Canonical format:
 PASSWORD_SECRET_REF=bw://<secret-id>
 ```
 
-Accepted aliases (case-insensitive, surrounding whitespace ignored):
+Supported formats:
 
 - `bw://<secret-id>`
-- `bw:<secret-id>`
 - `bitwarden://<secret-id>`
 
 ## Environment Variables
@@ -54,7 +53,6 @@ Config mapping snippet:
 
 ```dotenv
 PASSWORD_SECRET_REF=bw://replace-with-secret-id
-PASSWORD_SECRET_REF=bw:replace-with-secret-id
 PASSWORD_SECRET_REF=bitwarden://replace-with-secret-id
 ```
 
@@ -62,4 +60,4 @@ PASSWORD_SECRET_REF=bitwarden://replace-with-secret-id
 
 - `resolve secret ... via bw and bws failed`: verify CLI login/session and that `bw`/`bws` are installed.
 - `command timed out after 10s`: check network/CLI responsiveness and retry.
-- `invalid bitwarden secret ref`: use one of `bw://`, `bw:`, or `bitwarden://` prefixes.
+- `invalid secret reference format: expected bw://<value> or bitwarden://<value>`: use `bw://<secret-id>` or `bitwarden://<secret-id>`.

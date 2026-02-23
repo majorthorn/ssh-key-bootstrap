@@ -14,7 +14,7 @@ func TestProviderSupports(t *testing.T) {
 		support bool
 	}{
 		{ref: "bw://secret-id", support: true},
-		{ref: "bw:secret-id", support: true},
+		{ref: "bw:secret-id", support: false},
 		{ref: "bitwarden://secret-id", support: true},
 		{ref: "aws-sm://secret-id", support: false},
 		{ref: "random-value", support: false},
@@ -38,7 +38,7 @@ func TestParseSecretID(t *testing.T) {
 		expectError bool
 	}{
 		{name: "bw-scheme", ref: "bw://abc123", expectedID: "abc123"},
-		{name: "bw-short", ref: "bw:abc123", expectedID: "abc123"},
+		{name: "legacy-colon-format", ref: "bw:abc123", expectError: true},
 		{name: "bitwarden-scheme", ref: "bitwarden://abc123", expectedID: "abc123"},
 		{name: "invalid-scheme", ref: "vault://abc123", expectError: true},
 		{name: "empty-id", ref: "bw://   ", expectError: true},
@@ -51,6 +51,9 @@ func TestParseSecretID(t *testing.T) {
 			if testCase.expectError {
 				if err == nil {
 					t.Fatalf("expected error")
+				}
+				if !strings.Contains(err.Error(), bitwardenRefFormatErr) && testCase.name != "empty-id" {
+					t.Fatalf("unexpected error: %v", err)
 				}
 				return
 			}
@@ -172,11 +175,22 @@ exit 1
 		if err == nil {
 			t.Fatalf("expected parse error")
 		}
-		if !strings.Contains(err.Error(), "invalid bitwarden secret ref") {
+		if !strings.Contains(err.Error(), bitwardenRefFormatErr) {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if strings.Contains(err.Error(), secretRef) {
 			t.Fatalf("expected invalid ref error to avoid echoing full input, got %v", err)
+		}
+	})
+
+	t.Run("rejects legacy single-colon format", func(t *testing.T) {
+		secretRef := "bw:secret-id"
+		_, err := provider{}.Resolve(secretRef)
+		if err == nil {
+			t.Fatalf("expected parse error")
+		}
+		if !strings.Contains(err.Error(), bitwardenRefFormatErr) {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 }

@@ -20,7 +20,6 @@ func (provider) Name() string {
 func (provider) Supports(secretRef string) bool {
 	normalizedRef := strings.ToLower(strings.TrimSpace(secretRef))
 	return strings.HasPrefix(normalizedRef, "bw://") ||
-		strings.HasPrefix(normalizedRef, "bw:") ||
 		strings.HasPrefix(normalizedRef, "bitwarden://")
 }
 

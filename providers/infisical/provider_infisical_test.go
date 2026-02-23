@@ -56,9 +56,9 @@ func TestProviderSupports(t *testing.T) {
 		support bool
 	}{
 		{ref: "infisical://secret-id", support: true},
-		{ref: "infisical:secret-id", support: true},
+		{ref: "infisical:secret-id", support: false},
 		{ref: "inf://secret-id", support: true},
-		{ref: "inf:secret-id", support: true},
+		{ref: "inf:secret-id", support: false},
 		{ref: " INF://secret-id ", support: true},
 		{ref: "bw://secret-id", support: false},
 	}
@@ -83,7 +83,9 @@ func TestParseSecretRef(t *testing.T) {
 		expectError       bool
 	}{
 		{name: "canonical", ref: "infisical://app/password", expectedSecret: "app/password"},
-		{name: "short-alias", ref: "inf:secret-name", expectedSecret: "secret-name"},
+		{name: "short-scheme-alias", ref: "inf://secret-name", expectedSecret: "secret-name"},
+		{name: "legacy-colon-format", ref: "infisical:secret-name", expectError: true},
+		{name: "legacy-short-colon-format", ref: "inf:secret-name", expectError: true},
 		{name: "query-overrides", ref: "infisical://db/password?projectId=proj-1&environment=prod", expectedSecret: "db/password", expectedProjectID: "proj-1", expectedEnv: "prod"},
 		{name: "invalid-scheme", ref: "vault://secret", expectError: true},
 		{name: "missing-secret", ref: "infisical://   ", expectError: true},
@@ -96,6 +98,9 @@ func TestParseSecretRef(t *testing.T) {
 			if testCase.expectError {
 				if err == nil {
 					t.Fatalf("expected error")
+				}
+				if !strings.Contains(err.Error(), infisicalRefFormatErr) && testCase.name != "missing-secret" {
+					t.Fatalf("unexpected error: %v", err)
 				}
 				return
 			}
@@ -123,10 +128,22 @@ func TestProviderResolveInvalidRef(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected parse error")
 	}
-	if !strings.Contains(err.Error(), "invalid infisical secret ref") {
+	if !strings.Contains(err.Error(), infisicalRefFormatErr) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if strings.Contains(err.Error(), secretRef) || strings.Contains(err.Error(), "very-sensitive-secret-id") {
 		t.Fatalf("expected invalid ref error to avoid echoing full input, got %v", err)
+	}
+}
+
+func TestProviderResolveRejectsLegacySingleColonFormat(t *testing.T) {
+	t.Parallel()
+
+	_, err := provider{}.Resolve("infisical:very-sensitive-secret-id")
+	if err == nil {
+		t.Fatalf("expected parse error")
+	}
+	if !strings.Contains(err.Error(), infisicalRefFormatErr) {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const infisicalRefFormatErr = "invalid secret reference format: expected infisical://<value> or inf://<value>"
+
 func parseSecretRef(secretRef string) (secretRefSpec, error) {
 	body, err := parseSecretBody(secretRef)
 	if err != nil {
@@ -52,12 +54,8 @@ func parseSecretBody(secretRef string) (string, error) {
 		trimmedRef = trimmedRef[len("infisical://"):]
 	case strings.HasPrefix(strings.ToLower(trimmedRef), "inf://"):
 		trimmedRef = trimmedRef[len("inf://"):]
-	case strings.HasPrefix(strings.ToLower(trimmedRef), "infisical:"):
-		trimmedRef = trimmedRef[len("infisical:"):]
-	case strings.HasPrefix(strings.ToLower(trimmedRef), "inf:"):
-		trimmedRef = trimmedRef[len("inf:"):]
 	default:
-		return "", errors.New("invalid infisical secret ref")
+		return "", errors.New(infisicalRefFormatErr)
 	}
 
 	trimmedRef = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(trimmedRef), "//"))

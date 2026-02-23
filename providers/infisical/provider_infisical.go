@@ -30,9 +30,7 @@ func (provider) Name() string {
 func (provider) Supports(secretRef string) bool {
 	normalizedRef := strings.ToLower(strings.TrimSpace(secretRef))
 	return strings.HasPrefix(normalizedRef, "infisical://") ||
-		strings.HasPrefix(normalizedRef, "infisical:") ||
-		strings.HasPrefix(normalizedRef, "inf://") ||
-		strings.HasPrefix(normalizedRef, "inf:")
+		strings.HasPrefix(normalizedRef, "inf://")
 }
 
 func (provider) Resolve(secretRef string) (string, error) {

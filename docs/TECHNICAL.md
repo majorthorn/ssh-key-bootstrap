@@ -158,13 +158,9 @@ No Docker image, systemd unit, or Kubernetes deployment manifests are implemente
 - Password may be provided directly (`PASSWORD`) or via secret reference (`PASSWORD_SECRET_REF`).
 - Bitwarden provider supports refs:
   - `bw://...`
-  - `bw:...`
-  - `bitwarden://...`
 - Infisical provider supports refs:
   - `infisical://...`
-  - `infisical:...`
   - `inf://...`
-  - `inf:...`
 - Resolution strategy:
   1. `bw get secret <id> --raw`
   2. fallback `bws secret get <id>`

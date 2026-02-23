@@ -18,12 +18,10 @@ Canonical format:
 PASSWORD_SECRET_REF=infisical://<secret-name>
 ```
 
-Accepted aliases (case-insensitive, surrounding whitespace ignored):
+Supported formats:
 
 - `infisical://<ref>`
-- `infisical:<ref>`
 - `inf://<ref>`
-- `inf:<ref>`
 
 ## Environment Variables
 
@@ -94,12 +92,12 @@ Config mapping snippet:
 ```dotenv
 PASSWORD_SECRET_REF=infisical://ssh-prod-password
 PASSWORD_SECRET_REF=inf://ssh-prod-password
-PASSWORD_SECRET_REF=inf:ssh-prod-password
 ```
 
 ## Troubleshooting
 
 - `invalid INFISICAL_MODE ...`: use `cli` or `api`.
+- `invalid secret reference format: expected infisical://<value> or inf://<value>`: use `infisical://<secret-name>` or `inf://<secret-name>`.
 - `infisical CLI binary ... not found in PATH`: install Infisical CLI or set `INFISICAL_CLI_BIN`.
 - `infisical token is required`: set `INFISICAL_TOKEN`.
 - `infisical project id is required`: set `INFISICAL_PROJECT_ID` or provide `projectId` in the ref query.

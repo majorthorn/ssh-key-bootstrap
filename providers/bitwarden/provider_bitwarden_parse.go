@@ -5,6 +5,8 @@ import (
 	"strings"
 )
 
+const bitwardenRefFormatErr = "invalid secret reference format: expected bw://<value> or bitwarden://<value>"
+
 func parseSecretID(secretRef string) (string, error) {
 	trimmedRef := strings.TrimSpace(secretRef)
 	switch {
@@ -12,10 +14,8 @@ func parseSecretID(secretRef string) (string, error) {
 		trimmedRef = trimmedRef[len("bw://"):]
 	case strings.HasPrefix(strings.ToLower(trimmedRef), "bitwarden://"):
 		trimmedRef = trimmedRef[len("bitwarden://"):]
-	case strings.HasPrefix(strings.ToLower(trimmedRef), "bw:"):
-		trimmedRef = trimmedRef[len("bw:"):]
 	default:
-		return "", errors.New("invalid bitwarden secret ref")
+		return "", errors.New(bitwardenRefFormatErr)
 	}
 
 	trimmedRef = strings.TrimSpace(trimmedRef)
