@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"os"
 
-	appconfig "ssh-key-bootstrap/internal/config"
+	appconfig "ssh-key-bootstrap/config"
 )
 
 // configRuntimeIO adapts CLI I/O primitives (stdin/stdout) to the appconfig

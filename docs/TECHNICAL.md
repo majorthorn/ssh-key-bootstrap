@@ -29,7 +29,7 @@ No `/cmd` tree or additional executable targets are present.
   - Orchestrates CLI flow and output
   - SSH operations and host key handling
   - Prompting and runtime I/O helpers
-- `internal/config`
+- `config`
   - `.env` discovery/loading
   - dotenv parsing and normalization
   - loaded-config preview output
@@ -44,7 +44,7 @@ No `/cmd` tree or additional executable targets are present.
 ## Data/Control Flow
 
 - `run()` in `main.go` drives the task sequence.
-- Config loading is bridged through `config_bridge.go` into `internal/config` via `RuntimeIO` adapter.
+- Config loading is bridged through `config_bridge.go` into `config` via `RuntimeIO` adapter.
 - Secret refs are resolved in `prompts.go` through `providers.ResolveSecretReference(...)`.
 - SSH connection and remote key update are handled in `ssh.go`.
 

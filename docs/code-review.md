@@ -2,12 +2,12 @@
 
 ## Scope
 
-Repository-wide review across root CLI/runtime files, `internal/config`, provider registry and implementations (`providers/*`), tests, and docs.
+Repository-wide review across root CLI/runtime files, `config`, provider registry and implementations (`providers/*`), tests, and docs.
 
 ## Main Flow Map
 
 1. Parse flags and initialize run log (`main.go`, `shared_utils.go`).
-2. Load and parse `.env` configuration (`config_bridge.go`, `internal/config/*`).
+2. Load and parse `.env` configuration (`config_bridge.go`, `config/*`).
 3. Resolve `PASSWORD_SECRET_REF` via provider registry (`prompts.go`, `providers/resolver.go`, `providers/all/all.go`).
 4. Build SSH client config and host-key callback (`ssh.go`).
 5. Resolve hosts and public key input (`ssh.go`).
@@ -25,7 +25,7 @@ Repository-wide review across root CLI/runtime files, `internal/config`, provide
 
 - **Medium**: Interactive config review showed `Password Secret Ref` in clear text.
   - **Rationale**: Operators can accidentally expose secret identifiers in terminal captures.
-  - **Changes**: Redacted `Password Secret Ref` preview in `internal/config/review.go`.
+  - **Changes**: Redacted `Password Secret Ref` preview in `config/review.go`.
 
 - **Low**: Infisical requests relied only on client timeout.
   - **Rationale**: Explicit request context timeout is more robust when client config is swapped in tests/runtime hooks.

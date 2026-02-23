@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	appconfig "ssh-key-bootstrap/internal/config"
+	appconfig "ssh-key-bootstrap/config"
 )
 
 const (
