@@ -32,6 +32,67 @@ func TestCLIProviderMissingBinary(t *testing.T) {
 	}
 }
 
+func TestCLIProviderMissingProjectID(t *testing.T) {
+	t.Parallel()
+
+	setEnvGetterForTest(t, map[string]string{})
+
+	providerInstance := cliProvider{
+		binaryPath: "infisical",
+		timeout:    10 * time.Second,
+		lookPath: func(string) (string, error) {
+			return "/usr/bin/infisical", nil
+		},
+		runCommand: func(context.Context, string, []string, []string) (string, string, error) {
+			t.Fatalf("runCommand should not be called when project id is missing")
+			return "", "", nil
+		},
+	}
+
+	_, err := providerInstance.Resolve(secretRefSpec{secretName: "ssh-password", environment: "dev"})
+	if err == nil {
+		t.Fatalf("expected missing project id error")
+	}
+	if !strings.Contains(err.Error(), "INFISICAL_PROJECT_ID") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestCLIProviderUsesEnvFallbacks(t *testing.T) {
+	t.Parallel()
+
+	setEnvGetterForTest(t, map[string]string{
+		"INFISICAL_PROJECT_ID": "project-from-env",
+		"INFISICAL_ENV":        "env-from-env",
+	})
+
+	providerInstance := cliProvider{
+		binaryPath: "infisical",
+		timeout:    10 * time.Second,
+		lookPath: func(string) (string, error) {
+			return "/usr/bin/infisical", nil
+		},
+		runCommand: func(_ context.Context, _ string, args []string, _ []string) (string, string, error) {
+			joined := strings.Join(args, " ")
+			if !strings.Contains(joined, "--workspaceId project-from-env") {
+				t.Fatalf("expected project id from env, args: %v", args)
+			}
+			if !strings.Contains(joined, "--env env-from-env") {
+				t.Fatalf("expected env from INFISICAL_ENV, args: %v", args)
+			}
+			return "resolved-secret", "", nil
+		},
+	}
+
+	secretValue, err := providerInstance.Resolve(secretRefSpec{secretName: "ssh-password"})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if secretValue != "resolved-secret" {
+		t.Fatalf("secretValue = %q, want %q", secretValue, "resolved-secret")
+	}
+}
+
 func TestCLIProviderResolveSuccess(t *testing.T) {
 	t.Parallel()
 
@@ -74,8 +135,13 @@ func TestCLIProviderResolveSuccess(t *testing.T) {
 	}
 }
 
-func TestCLIProviderResolveErrorIncludesStderr(t *testing.T) {
+func TestCLIProviderResolveErrorDoesNotIncludeStderr(t *testing.T) {
 	t.Parallel()
+
+	setEnvGetterForTest(t, map[string]string{
+		"INFISICAL_PROJECT_ID": "project-1",
+		"INFISICAL_ENV":        "dev",
+	})
 
 	providerInstance := cliProvider{
 		binaryPath: "infisical",
@@ -92,7 +158,10 @@ func TestCLIProviderResolveErrorIncludesStderr(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected command failure")
 	}
-	if !strings.Contains(err.Error(), "permission denied") {
-		t.Fatalf("expected stderr in error, got %v", err)
+	if strings.Contains(err.Error(), "permission denied") {
+		t.Fatalf("stderr should not be included in returned error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "infisical CLI command failed") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

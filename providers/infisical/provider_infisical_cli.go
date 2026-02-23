@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -33,6 +32,19 @@ func (providerInstance cliProvider) Resolve(secretSpec secretRefSpec) (string, e
 		return "", fmt.Errorf("infisical CLI binary %q not found in PATH (set INFISICAL_CLI_BIN to override)", providerInstance.binaryPath)
 	}
 
+	resolvedProjectID := firstNonEmpty(secretSpec.projectID, envGetter("INFISICAL_PROJECT_ID"))
+	resolvedEnvironment := firstNonEmpty(
+		secretSpec.environment,
+		envGetter("INFISICAL_ENV"),
+		envGetter("INFISICAL_ENVIRONMENT"),
+	)
+	if resolvedProjectID == "" {
+		return "", errors.New("infisical project id is required (set INFISICAL_PROJECT_ID)")
+	}
+	if resolvedEnvironment == "" {
+		return "", errors.New("infisical environment is required (set INFISICAL_ENV or INFISICAL_ENVIRONMENT)")
+	}
+
 	commandContext, cancel := context.WithTimeout(context.Background(), providerInstance.timeout)
 	defer cancel()
 
@@ -40,21 +52,17 @@ func (providerInstance cliProvider) Resolve(secretSpec secretRefSpec) (string, e
 		"secrets",
 		"get",
 		secretSpec.secretName,
-		"--workspaceId", secretSpec.projectID,
-		"--env", secretSpec.environment,
+		"--workspaceId", resolvedProjectID,
+		"--env", resolvedEnvironment,
 		"--plain",
 	}
 
-	stdout, stderr, err := providerInstance.runCommand(commandContext, providerInstance.binaryPath, commandArgs, nil)
+	stdout, _, err := providerInstance.runCommand(commandContext, providerInstance.binaryPath, commandArgs, nil)
 	if err != nil {
-		stderr = strings.TrimSpace(stderr)
-		if stderr == "" {
-			return "", fmt.Errorf("infisical CLI command failed: %w", err)
-		}
-		return "", fmt.Errorf("infisical CLI command failed: %w: %s", err, stderr)
+		return "", fmt.Errorf("infisical CLI command failed: %w", err)
 	}
 
-	secretValue := strings.TrimSpace(stdout)
+	secretValue := firstNonEmpty(stdout)
 	if secretValue == "" {
 		return "", errors.New("infisical CLI returned an empty secret value")
 	}
