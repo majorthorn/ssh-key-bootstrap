@@ -44,6 +44,11 @@ Run:
 - Bitwarden (`bw://...`, `bw:...`, `bitwarden://...`)
 - Infisical (`infisical://...`, plus `infisical:...`, `inf://...`, `inf:...` aliases)
 
+Infisical mode selection:
+
+- Default: CLI mode (`INFISICAL_MODE` unset/empty)
+- API mode: set `INFISICAL_MODE=api`
+
 Use `PASSWORD_SECRET_REF` to resolve the SSH password at runtime.
 See provider docs for setup details:
 

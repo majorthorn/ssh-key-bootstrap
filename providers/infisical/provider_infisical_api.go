@@ -27,6 +27,8 @@ type runtimeConfig struct {
 	environment string
 }
 
+type apiProvider struct{}
+
 var (
 	envGetter = os.Getenv
 
@@ -36,7 +38,11 @@ var (
 	secretCache = map[string]string{}
 )
 
-func resolveWithInfisical(secretSpec secretRefSpec) (string, error) {
+func (apiProvider) Resolve(secretSpec secretRefSpec) (string, error) {
+	return resolveWithInfisicalAPI(secretSpec)
+}
+
+func resolveWithInfisicalAPI(secretSpec secretRefSpec) (string, error) {
 	resolvedConfig, err := loadRuntimeConfig(secretSpec)
 	if err != nil {
 		return "", err
@@ -53,6 +59,10 @@ func resolveWithInfisical(secretSpec secretRefSpec) (string, error) {
 	}
 	storeCachedSecret(cacheKey, secretValue)
 	return secretValue, nil
+}
+
+func resolveWithInfisical(secretSpec secretRefSpec) (string, error) {
+	return resolveWithInfisicalAPI(secretSpec)
 }
 
 func loadRuntimeConfig(secretSpec secretRefSpec) (runtimeConfig, error) {

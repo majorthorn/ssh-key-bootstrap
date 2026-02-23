@@ -5,6 +5,48 @@ import (
 	"testing"
 )
 
+func TestNewModeProviderDefaultsToCLI(t *testing.T) {
+	t.Parallel()
+
+	setLookupEnvForTest(t, map[string]string{})
+
+	providerInstance, err := newModeProvider()
+	if err != nil {
+		t.Fatalf("newModeProvider() error = %v", err)
+	}
+	if _, ok := providerInstance.(cliProvider); !ok {
+		t.Fatalf("expected default provider type cliProvider, got %T", providerInstance)
+	}
+}
+
+func TestNewModeProviderSelectsAPI(t *testing.T) {
+	t.Parallel()
+
+	setLookupEnvForTest(t, map[string]string{"INFISICAL_MODE": "api"})
+
+	providerInstance, err := newModeProvider()
+	if err != nil {
+		t.Fatalf("newModeProvider() error = %v", err)
+	}
+	if _, ok := providerInstance.(apiProvider); !ok {
+		t.Fatalf("expected provider type apiProvider, got %T", providerInstance)
+	}
+}
+
+func TestNewModeProviderInvalidMode(t *testing.T) {
+	t.Parallel()
+
+	setLookupEnvForTest(t, map[string]string{"INFISICAL_MODE": "not-valid"})
+
+	_, err := newModeProvider()
+	if err == nil {
+		t.Fatalf("expected invalid mode error")
+	}
+	if !strings.Contains(err.Error(), "INFISICAL_MODE") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestProviderSupports(t *testing.T) {
 	t.Parallel()
 

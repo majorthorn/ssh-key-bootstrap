@@ -70,6 +70,7 @@ Repository-wide review across root CLI/runtime files, `internal/config`, provide
 - Secret references/secret identifiers are considered sensitive metadata and should not be echoed in user-facing errors.
 - Preserving CLI/config/output compatibility remains a priority except for security/correctness fixes.
 - Infisical API contract remains `GET /api/v3/secrets/raw/{secretName}` with `workspaceId` and `environment` query parameters.
+- Infisical CLI mode assumes the command shape `infisical secrets get <secret-name> --workspaceId <id> --env <env> --plain` supported by installed CLI.
 
 ## TODO Disposition
 
