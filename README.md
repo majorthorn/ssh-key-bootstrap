@@ -53,6 +53,12 @@ Quick provider ref examples:
     - `PASSWORD_SECRET_REF=infisical://replace-with-secret-name`
     - `PASSWORD_SECRET_REF=inf://replace-with-secret-name`
 
+Optional explicit provider selection:
+
+- `PASSWORD_PROVIDER=bitwarden`
+- `PASSWORD_PROVIDER=infisical`
+- `PASSWORD_PROVIDER=local` (uses `PASSWORD` as primary source)
+
 Use `PASSWORD_SECRET_REF` to resolve the SSH password at runtime.
 See provider docs for setup details:
 

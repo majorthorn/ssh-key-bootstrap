@@ -21,6 +21,8 @@ var confirmUnknownHost = promptTrustUnknownHost
 var sshDial = ssh.Dial
 var isTerminalForTrustPrompt = isTerminal
 var promptLineForTrustPrompt = promptLine
+var trustPromptTimeout = 10 * time.Second
+var promptLineForTrustPromptWithTimeout = defaultPromptLineForTrustPromptWithTimeout
 
 func buildSSHConfig(programOptions *options) (*ssh.ClientConfig, error) {
 	hostKeyCallback, err := buildHostKeyCallback(programOptions.InsecureIgnoreHostKey, programOptions.KnownHosts)
@@ -112,7 +114,7 @@ func ensureKnownHostsFile(path string) error {
 
 func promptTrustUnknownHost(hostname, knownHostsPath string, key ssh.PublicKey) (bool, error) {
 	if !isTerminalForTrustPrompt(os.Stdin) {
-		return false, fmt.Errorf("unknown host %s and no interactive terminal available to confirm trust", hostname)
+		return true, nil
 	}
 
 	outputPrintf("The authenticity of host %q can't be established.\n", hostname)
@@ -120,9 +122,13 @@ func promptTrustUnknownHost(hostname, knownHostsPath string, key ssh.PublicKey) 
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		answer, err := promptLineForTrustPrompt(reader, fmt.Sprintf("Trust this host and add it to %s? (yes/no): ", knownHostsPath))
+		answer, timedOut, err := promptLineForTrustPromptWithTimeout(reader, fmt.Sprintf("Trust this host and add it to %s? (yes/no): ", knownHostsPath), trustPromptTimeout)
 		if err != nil {
 			return false, err
+		}
+		if timedOut {
+			outputPrintln("No input received. Proceeding with default: yes.")
+			return true, nil
 		}
 
 		switch strings.ToLower(strings.TrimSpace(answer)) {
@@ -133,6 +139,29 @@ func promptTrustUnknownHost(hostname, knownHostsPath string, key ssh.PublicKey) 
 		default:
 			outputPrintln(`Please answer "yes" or "no".`)
 		}
+	}
+}
+
+func defaultPromptLineForTrustPromptWithTimeout(reader *bufio.Reader, label string, timeout time.Duration) (string, bool, error) {
+	type promptResult struct {
+		answer string
+		err    error
+	}
+
+	promptResultChannel := make(chan promptResult, 1)
+	go func() {
+		answer, err := promptLineForTrustPrompt(reader, label)
+		promptResultChannel <- promptResult{answer: answer, err: err}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case result := <-promptResultChannel:
+		return result.answer, false, result.err
+	case <-timer.C:
+		return "", true, nil
 	}
 }
 

@@ -118,6 +118,59 @@ func TestValidateOptionsPasswordSecretRefConflict(t *testing.T) {
 	}
 }
 
+func TestValidateOptionsProviderSelectionByName(t *testing.T) {
+	t.Parallel()
+
+	originalNamedResolver := resolvePasswordFromNamedProvider
+	resolvePasswordFromNamedProvider = func(providerName, secretRef string) (string, error) {
+		if providerName != "bitwarden" {
+			t.Fatalf("providerName = %q, want %q", providerName, "bitwarden")
+		}
+		if secretRef != "bw://ssh-prod-password" {
+			t.Fatalf("secretRef = %q, want %q", secretRef, "bw://ssh-prod-password")
+		}
+		return "resolved-by-name", nil
+	}
+	t.Cleanup(func() { resolvePasswordFromNamedProvider = originalNamedResolver })
+
+	programOptions := &options{
+		Port:              defaultSSHPort,
+		TimeoutSec:        defaultTimeoutSeconds,
+		PasswordProvider:  "bitwarden",
+		PasswordSecretRef: "bw://ssh-prod-password",
+	}
+	if err := validateOptions(programOptions); err != nil {
+		t.Fatalf("validate options: %v", err)
+	}
+	if programOptions.Password != "resolved-by-name" {
+		t.Fatalf("password = %q, want %q", programOptions.Password, "resolved-by-name")
+	}
+}
+
+func TestValidateOptionsUnknownProviderName(t *testing.T) {
+	t.Parallel()
+
+	originalNamedResolver := resolvePasswordFromNamedProvider
+	resolvePasswordFromNamedProvider = func(providerName, secretRef string) (string, error) {
+		return "", errors.New(`unknown provider "missing" (valid: bitwarden, infisical, local)`)
+	}
+	t.Cleanup(func() { resolvePasswordFromNamedProvider = originalNamedResolver })
+
+	programOptions := &options{
+		Port:              defaultSSHPort,
+		TimeoutSec:        defaultTimeoutSeconds,
+		PasswordProvider:  "missing",
+		PasswordSecretRef: "bw://ssh-prod-password",
+	}
+	err := validateOptions(programOptions)
+	if err == nil {
+		t.Fatalf("expected unknown provider error")
+	}
+	if !strings.Contains(err.Error(), "valid:") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 // TestExtractSingleKey validates that only one non-comment key line is kept.
 func TestExtractSingleKey(t *testing.T) {
 	t.Parallel()

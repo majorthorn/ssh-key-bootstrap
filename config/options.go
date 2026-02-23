@@ -6,6 +6,7 @@ type Options struct {
 	User              string
 	Password          string // #nosec G117 -- runtime-only credential container for user input and secret resolution
 	PasswordSecretRef string
+	PasswordProvider  string
 	KeyInput          string
 	EnvFile           string
 	Port              int

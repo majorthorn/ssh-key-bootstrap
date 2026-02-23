@@ -151,11 +151,15 @@ No Docker image, systemd unit, or Kubernetes deployment manifests are implemente
 
 - Default is secure host key verification via `known_hosts`.
 - Unknown hosts trigger interactive trust prompt and optional append to known_hosts.
+- Unknown-host trust confirmation defaults to `yes` after 10 seconds with no input.
+- In non-interactive mode (no TTY/CI), unknown-host trust confirmation auto-accepts immediately.
 - `INSECURE_IGNORE_HOST_KEY=true` disables host key verification (testing-only; MITM risk).
 
 ## Secret handling
 
 - Password may be provided directly (`PASSWORD`) or via secret reference (`PASSWORD_SECRET_REF`).
+- `PASSWORD_PROVIDER` can explicitly select a registered provider by name (`bitwarden`, `infisical`, `local`).
+- `PASSWORD_PROVIDER=local` uses `PASSWORD` as the primary source.
 - Bitwarden provider supports refs:
   - `bw://...`
 - Infisical provider supports refs:

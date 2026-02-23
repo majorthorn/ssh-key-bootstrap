@@ -31,6 +31,7 @@ Required:
 Optional:
 
 - `PATH` (so `bw` and/or `bws` can be found)
+- `PASSWORD_PROVIDER=bitwarden` to force Bitwarden resolution by provider name
 
 Notes:
 

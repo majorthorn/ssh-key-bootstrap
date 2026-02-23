@@ -67,6 +67,9 @@ func ApplyDotEnvWithMetadata(programOptions *Options) (map[string]bool, error) {
 	setEnvOption("PASSWORD_SECRET_REF", "passwordSecretRef", true, func(v string) {
 		programOptions.PasswordSecretRef = v
 	})
+	setEnvOption("PASSWORD_PROVIDER", "passwordProvider", true, func(v string) {
+		programOptions.PasswordProvider = strings.ToLower(v)
+	})
 
 	keyInputs := collectNonEmptyDotEnvValues(parsedEnvValues, "KEY", "PUBKEY", "PUBKEY_FILE")
 	if len(keyInputs) > 1 {

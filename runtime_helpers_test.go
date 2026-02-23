@@ -78,17 +78,21 @@ func stubTrustPromptHooks(
 	t *testing.T,
 	isTerminalStub func(*os.File) bool,
 	promptLineStub func(*bufio.Reader, string) (string, error),
+	promptWithTimeoutStub func(*bufio.Reader, string, time.Duration) (string, bool, error),
 ) {
 	t.Helper()
 
 	originalIsTerminal := isTerminalForTrustPrompt
 	originalPromptLine := promptLineForTrustPrompt
+	originalPromptLineWithTimeout := promptLineForTrustPromptWithTimeout
 	isTerminalForTrustPrompt = isTerminalStub
 	promptLineForTrustPrompt = promptLineStub
+	promptLineForTrustPromptWithTimeout = promptWithTimeoutStub
 
 	t.Cleanup(func() {
 		isTerminalForTrustPrompt = originalIsTerminal
 		promptLineForTrustPrompt = originalPromptLine
+		promptLineForTrustPromptWithTimeout = originalPromptLineWithTimeout
 	})
 }
 
@@ -663,6 +667,34 @@ func TestValidateOptionsAdditionalErrorPaths(t *testing.T) {
 			t.Fatalf("expected secret resolver error, got %v", err)
 		}
 	})
+
+	t.Run("local provider requires password in non-interactive mode", func(t *testing.T) {
+		stubPromptPasswordHooks(
+			t,
+			func(*os.File) bool { return false },
+			func(*os.File) ([]byte, error) { return nil, errors.New("unexpected password read") },
+		)
+		t.Setenv("PASSWORD", "")
+
+		opts := &options{Port: 22, TimeoutSec: 10, PasswordProvider: "local"}
+		err := validateOptions(opts)
+		if err == nil || !strings.Contains(err.Error(), "PASSWORD is required when PASSWORD_PROVIDER=local") {
+			t.Fatalf("expected local non-interactive password error, got %v", err)
+		}
+	})
+
+	t.Run("local provider uses PASSWORD value", func(t *testing.T) {
+		t.Setenv("PASSWORD", "from-local-env")
+
+		opts := &options{Port: 22, TimeoutSec: 10, PasswordProvider: "local"}
+		err := validateOptions(opts)
+		if err != nil {
+			t.Fatalf("validate options: %v", err)
+		}
+		if opts.Password != "from-local-env" {
+			t.Fatalf("opts.Password = %q, want %q", opts.Password, "from-local-env")
+		}
+	})
 }
 
 func TestTimestampedLineWriterWriteAndClose(t *testing.T) {
@@ -968,15 +1000,16 @@ func TestPromptTrustUnknownHostNonInteractive(t *testing.T) {
 		t,
 		func(*os.File) bool { return false },
 		func(*bufio.Reader, string) (string, error) { return "", nil },
+		func(*bufio.Reader, string, time.Duration) (string, bool, error) { return "", false, nil },
 	)
 
 	hostPublicKey := parsePublicKeyFromAuthorizedLine(t, generateTestKey(t))
-	_, err := promptTrustUnknownHost("example.com:22", "/tmp/known_hosts", hostPublicKey)
-	if err == nil {
-		t.Fatalf("expected non-interactive trust prompt error")
-	}
-	if !strings.Contains(err.Error(), "no interactive terminal available") {
+	trustHost, err := promptTrustUnknownHost("example.com:22", "/tmp/known_hosts", hostPublicKey)
+	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if !trustHost {
+		t.Fatalf("expected default trustHost=true in non-interactive mode")
 	}
 }
 
@@ -995,6 +1028,10 @@ func TestPromptTrustUnknownHostInteractiveYesAfterRetry(t *testing.T) {
 			answer := answers[answerIndex]
 			answerIndex++
 			return answer, nil
+		},
+		func(reader *bufio.Reader, label string, _ time.Duration) (string, bool, error) {
+			answer, err := promptLineForTrustPrompt(reader, label)
+			return answer, false, err
 		},
 	)
 
@@ -1024,6 +1061,10 @@ func TestPromptTrustUnknownHostInteractiveNo(t *testing.T) {
 		t,
 		func(*os.File) bool { return true },
 		func(*bufio.Reader, string) (string, error) { return "n", nil },
+		func(reader *bufio.Reader, label string, _ time.Duration) (string, bool, error) {
+			answer, err := promptLineForTrustPrompt(reader, label)
+			return answer, false, err
+		},
 	)
 
 	hostPublicKey := parsePublicKeyFromAuthorizedLine(t, generateTestKey(t))
@@ -1036,11 +1077,38 @@ func TestPromptTrustUnknownHostInteractiveNo(t *testing.T) {
 	}
 }
 
+func TestPromptTrustUnknownHostInteractiveTimeoutDefaultsYes(t *testing.T) {
+	outputBuffer, _ := captureWriters(t)
+
+	stubTrustPromptHooks(
+		t,
+		func(*os.File) bool { return true },
+		func(*bufio.Reader, string) (string, error) { return "", nil },
+		func(*bufio.Reader, string, time.Duration) (string, bool, error) { return "", true, nil },
+	)
+
+	hostPublicKey := parsePublicKeyFromAuthorizedLine(t, generateTestKey(t))
+	trustHost, err := promptTrustUnknownHost("example.com:22", "/tmp/known_hosts", hostPublicKey)
+	if err != nil {
+		t.Fatalf("promptTrustUnknownHost() error = %v", err)
+	}
+	if !trustHost {
+		t.Fatalf("expected trustHost=true on prompt timeout")
+	}
+	if !strings.Contains(outputBuffer.String(), "default: yes") {
+		t.Fatalf("expected timeout default output, got %q", outputBuffer.String())
+	}
+}
+
 func TestPromptTrustUnknownHostPromptError(t *testing.T) {
 	stubTrustPromptHooks(
 		t,
 		func(*os.File) bool { return true },
 		func(*bufio.Reader, string) (string, error) { return "", errors.New("prompt failed") },
+		func(reader *bufio.Reader, label string, _ time.Duration) (string, bool, error) {
+			answer, err := promptLineForTrustPrompt(reader, label)
+			return answer, false, err
+		},
 	)
 
 	hostPublicKey := parsePublicKeyFromAuthorizedLine(t, generateTestKey(t))

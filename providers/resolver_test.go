@@ -148,6 +148,71 @@ func TestResolveSecretReferenceProviderReturnsEmptySecret(t *testing.T) {
 	}
 }
 
+func TestProviderByName(t *testing.T) {
+	t.Parallel()
+
+	selectedProvider, ok := ProviderByName("provider-a", []Provider{
+		fakeProvider{name: "provider-a", supports: true, value: "secret-value"},
+	})
+	if !ok {
+		t.Fatalf("expected provider match")
+	}
+	if selectedProvider.Name() != "provider-a" {
+		t.Fatalf("provider name = %q, want %q", selectedProvider.Name(), "provider-a")
+	}
+
+	_, ok = ProviderByName("missing", []Provider{
+		fakeProvider{name: "provider-a", supports: true, value: "secret-value"},
+	})
+	if ok {
+		t.Fatalf("did not expect provider match")
+	}
+}
+
+func TestProviderNames(t *testing.T) {
+	t.Parallel()
+
+	names := ProviderNames([]Provider{
+		fakeProvider{name: "provider-b", supports: true, value: "a"},
+		fakeProvider{name: "provider-a", supports: true, value: "b"},
+		fakeProvider{name: "PROVIDER-A", supports: true, value: "c"},
+		nil,
+		fakeProvider{name: "  ", supports: true, value: "d"},
+	})
+	if got, want := strings.Join(names, ","), "provider-a,provider-b"; got != want {
+		t.Fatalf("ProviderNames() = %q, want %q", got, want)
+	}
+}
+
+func TestResolveSecretReferenceWithProvider(t *testing.T) {
+	t.Parallel()
+
+	resolvedValue, err := ResolveSecretReferenceWithProvider("ignored://value", "provider-a", []Provider{
+		fakeProvider{name: "provider-a", supports: false, value: "named-resolution"},
+	})
+	if err != nil {
+		t.Fatalf("ResolveSecretReferenceWithProvider() error = %v", err)
+	}
+	if resolvedValue != "named-resolution" {
+		t.Fatalf("resolved value = %q, want %q", resolvedValue, "named-resolution")
+	}
+}
+
+func TestResolveSecretReferenceWithProviderUnknown(t *testing.T) {
+	t.Parallel()
+
+	_, err := ResolveSecretReferenceWithProvider("ignored://value", "missing-provider", []Provider{
+		fakeProvider{name: "provider-a", supports: true, value: "a"},
+		fakeProvider{name: "provider-b", supports: true, value: "b"},
+	})
+	if err == nil {
+		t.Fatalf("expected unknown provider error")
+	}
+	if !strings.Contains(err.Error(), "missing-provider") || !strings.Contains(err.Error(), "provider-a") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestRegisterProviderDeduplicatesByName(t *testing.T) {
 	providerRegistryMu.Lock()
 	providerRegistry = nil

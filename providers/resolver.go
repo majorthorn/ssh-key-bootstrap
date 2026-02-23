@@ -3,6 +3,7 @@ package providers
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 )
@@ -106,4 +107,68 @@ func ResolveSecretReference(secretRef string, providers []Provider) (string, err
 		return "", errors.New("no provider supports the supplied secret reference")
 	}
 	return "", fmt.Errorf("secret reference resolution failed (%s)", strings.Join(resolveErrors, "; "))
+}
+
+func ResolveSecretReferenceWithProvider(secretRef, providerName string, providers []Provider) (string, error) {
+	trimmedProviderName := strings.TrimSpace(providerName)
+	if trimmedProviderName == "" {
+		return "", errors.New("provider name is required")
+	}
+
+	selectedProvider, ok := ProviderByName(trimmedProviderName, providers)
+	if !ok {
+		validProviderNames := ProviderNames(providers)
+		if len(validProviderNames) == 0 {
+			return "", ErrNoProvidersConfigured
+		}
+		return "", fmt.Errorf("unknown provider %q (valid: %s)", trimmedProviderName, strings.Join(validProviderNames, ", "))
+	}
+
+	resolvedValue, err := selectedProvider.Resolve(strings.TrimSpace(secretRef))
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(resolvedValue) == "" {
+		return "", fmt.Errorf("%s returned an empty secret", selectedProvider.Name())
+	}
+	return strings.TrimSpace(resolvedValue), nil
+}
+
+func ProviderByName(providerName string, providers []Provider) (Provider, bool) {
+	trimmedProviderName := strings.TrimSpace(providerName)
+	if trimmedProviderName == "" {
+		return nil, false
+	}
+	for _, provider := range providers {
+		if provider == nil {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(provider.Name()), trimmedProviderName) {
+			return provider, true
+		}
+	}
+	return nil, false
+}
+
+func ProviderNames(providers []Provider) []string {
+	providerNames := make([]string, 0, len(providers))
+	seenNames := make(map[string]struct{}, len(providers))
+	for _, provider := range providers {
+		if provider == nil {
+			continue
+		}
+		name := strings.TrimSpace(provider.Name())
+		if name == "" {
+			continue
+		}
+
+		key := strings.ToLower(name)
+		if _, exists := seenNames[key]; exists {
+			continue
+		}
+		seenNames[key] = struct{}{}
+		providerNames = append(providerNames, name)
+	}
+	slices.Sort(providerNames)
+	return providerNames
 }

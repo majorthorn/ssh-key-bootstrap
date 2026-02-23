@@ -14,6 +14,15 @@ import (
 var resolvePasswordFromSecretRef = func(secretRef string) (string, error) {
 	return providers.ResolveSecretReference(secretRef, providers.DefaultProviders())
 }
+var resolvePasswordFromNamedProvider = func(providerName, secretRef string) (string, error) {
+	return providers.ResolveSecretReferenceWithProvider(secretRef, providerName, providers.DefaultProviders())
+}
+var readPasswordProviderSelection = func(programOptions *options) string {
+	if strings.TrimSpace(programOptions.PasswordProvider) != "" {
+		return strings.ToLower(strings.TrimSpace(programOptions.PasswordProvider))
+	}
+	return strings.ToLower(strings.TrimSpace(os.Getenv("PASSWORD_PROVIDER")))
+}
 
 var isTerminalForPasswordPrompt = isTerminal
 var readPasswordForPrompt = readPassword
@@ -28,6 +37,47 @@ func validateOptions(programOptions *options) error {
 	if strings.TrimSpace(programOptions.Password) != "" && strings.TrimSpace(programOptions.PasswordSecretRef) != "" {
 		return errors.New("use either PASSWORD/password or PASSWORD_SECRET_REF/password_secret_ref, not both")
 	}
+
+	selectedProvider := readPasswordProviderSelection(programOptions)
+	if selectedProvider != "" {
+		programOptions.PasswordProvider = selectedProvider
+		defaultProviders := providers.DefaultProviders()
+		if _, ok := providers.ProviderByName(selectedProvider, defaultProviders); !ok {
+			validProviderNames := providers.ProviderNames(defaultProviders)
+			if len(validProviderNames) == 0 {
+				return providers.ErrNoProvidersConfigured
+			}
+			return fmt.Errorf("unknown PASSWORD_PROVIDER %q (valid: %s)", selectedProvider, strings.Join(validProviderNames, ", "))
+		}
+		if strings.EqualFold(selectedProvider, "local") {
+			if strings.TrimSpace(programOptions.Password) != "" {
+				return nil
+			}
+
+			resolvedPassword, err := resolvePasswordFromNamedProvider(selectedProvider, "")
+			if err == nil {
+				programOptions.Password = resolvedPassword
+				return nil
+			}
+
+			if !isTerminalForPasswordPrompt(os.Stdin) {
+				return errors.New("PASSWORD is required when PASSWORD_PROVIDER=local in non-interactive mode")
+			}
+			return nil
+		}
+
+		if strings.TrimSpace(programOptions.PasswordSecretRef) == "" {
+			return fmt.Errorf("PASSWORD_SECRET_REF is required when PASSWORD_PROVIDER=%s", selectedProvider)
+		}
+
+		resolvedPassword, err := resolvePasswordFromNamedProvider(selectedProvider, programOptions.PasswordSecretRef)
+		if err != nil {
+			return fmt.Errorf("resolve password secret reference: %w", err)
+		}
+		programOptions.Password = resolvedPassword
+		return nil
+	}
+
 	if strings.TrimSpace(programOptions.Password) == "" && strings.TrimSpace(programOptions.PasswordSecretRef) != "" {
 		resolvedPassword, err := resolvePasswordFromSecretRef(programOptions.PasswordSecretRef)
 		if err != nil {

@@ -9,6 +9,7 @@ Supported secret references:
 
 - `infisical://<secret-name>`
 - `inf://<secret-name>`
+- Optional explicit selector: `PASSWORD_PROVIDER=infisical`
 
 Canonical example:
 
